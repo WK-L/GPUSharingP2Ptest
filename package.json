@@ -1,0 +1,15 @@
+{
+  "type": "module",
+  "scripts": {
+    "app": "node src/app/main.js"
+  },
+  "dependencies": {
+    "@chainsafe/libp2p-noise": "^17.0.0",
+    "@chainsafe/libp2p-yamux": "^8.0.1",
+    "@libp2p/crypto": "^5.1.17",
+    "@libp2p/peer-id": "^6.0.8",
+    "@libp2p/tcp": "^11.0.17",
+    "@multiformats/multiaddr": "^13.0.1",
+    "libp2p": "^3.2.2"
+  }
+}
