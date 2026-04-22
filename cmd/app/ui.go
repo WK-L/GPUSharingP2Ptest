@@ -1,9 +1,11 @@
-export const appPage = `<!doctype html>
+package main
+
+const appPage = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>LAN P2P Transfer</title>
+  <title>P2P File Transfer</title>
   <style>
     :root {
       color-scheme: light;
@@ -12,198 +14,44 @@ export const appPage = `<!doctype html>
       color: #1d2430;
     }
 
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-    }
-
-    main {
-      width: min(1120px, calc(100vw - 32px));
-      margin: 0 auto;
-      padding: 28px 0;
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 20px;
-      margin-bottom: 20px;
-    }
-
-    h1 {
-      margin: 0 0 8px;
-      font-size: 32px;
-      line-height: 1.1;
-      letter-spacing: 0;
-    }
-
-    h2 {
-      margin: 0 0 14px;
-      font-size: 18px;
-      letter-spacing: 0;
-    }
-
-    p {
-      margin: 0;
-      color: #5c6676;
-      line-height: 1.5;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-    }
-
-    .panel {
-      background: #fff;
-      border: 1px solid #dce2ec;
-      border-radius: 8px;
-      padding: 18px;
-      box-shadow: 0 10px 28px rgba(27, 42, 67, 0.06);
-    }
-
-    .wide {
-      grid-column: 1 / -1;
-    }
-
-    .role {
-      display: flex;
-      gap: 8px;
-      padding: 4px;
-      border: 1px solid #dce2ec;
-      border-radius: 8px;
-      background: #fff;
-    }
-
-    button {
-      min-height: 42px;
-      border: 0;
-      border-radius: 8px;
-      padding: 0 14px;
-      font: inherit;
-      font-weight: 700;
-      color: #243044;
-      background: #edf1f7;
-      cursor: pointer;
-    }
-
-    button.primary {
-      color: #fff;
-      background: #1f6feb;
-    }
-
-    button.success {
-      color: #fff;
-      background: #16833a;
-    }
-
-    button.active {
-      color: #fff;
-      background: #1f6feb;
-    }
-
-    input[type="file"], input[type="text"] {
-      width: 100%;
-      min-height: 44px;
-      border: 1px solid #c8d0dc;
-      border-radius: 8px;
-      padding: 10px 12px;
-      font: inherit;
-      background: #fbfcfe;
-    }
-
-    input[type="file"] {
-      border-style: dashed;
-    }
-
-    .row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .row > input[type="file"] {
-      flex: 1 1 280px;
-    }
-
-    code {
-      display: block;
-      overflow-wrap: anywhere;
-      padding: 10px;
-      border-radius: 8px;
-      background: #eef2f7;
-      line-height: 1.45;
-      color: #172033;
-    }
-
-    ul {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-
-    li {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 0;
-      border-top: 1px solid #e6ebf2;
-    }
-
-    li:first-child {
-      border-top: 0;
-    }
-
-    .meta {
-      color: #667285;
-      font-size: 13px;
-      overflow-wrap: anywhere;
-    }
-
-    .status {
-      min-height: 24px;
-      margin-top: 12px;
-      color: #1f6feb;
-      font-weight: 700;
-    }
-
-    .receiver {
-      align-items: flex-start;
-    }
-
-    .receiver button {
-      flex: 0 0 auto;
-    }
-
-    .hidden {
-      display: none;
-    }
-
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    main { width: min(1120px, calc(100vw - 32px)); margin: 0 auto; padding: 28px 0; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.1; letter-spacing: 0; }
+    h2 { margin: 0 0 14px; font-size: 18px; letter-spacing: 0; }
+    p { margin: 0; color: #5c6676; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .panel { background: #fff; border: 1px solid #dce2ec; border-radius: 8px; padding: 18px; box-shadow: 0 10px 28px rgba(27, 42, 67, 0.06); }
+    .wide { grid-column: 1 / -1; }
+    .role { display: flex; gap: 8px; padding: 4px; border: 1px solid #dce2ec; border-radius: 8px; background: #fff; }
+    button { min-height: 42px; border: 0; border-radius: 8px; padding: 0 14px; font: inherit; font-weight: 700; color: #243044; background: #edf1f7; cursor: pointer; }
+    button.primary, button.active { color: #fff; background: #1f6feb; }
+    button.success { color: #fff; background: #16833a; }
+    input[type="file"], input[type="text"] { width: 100%; min-height: 44px; border: 1px solid #c8d0dc; border-radius: 8px; padding: 10px 12px; font: inherit; background: #fbfcfe; }
+    input[type="file"] { border-style: dashed; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .row > input[type="file"] { flex: 1 1 280px; }
+    code { display: block; overflow-wrap: anywhere; padding: 10px; border-radius: 8px; background: #eef2f7; line-height: 1.45; color: #172033; }
+    ul { list-style: none; margin: 0; padding: 0; }
+    li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ebf2; }
+    li:first-child { border-top: 0; }
+    .meta { color: #667285; font-size: 13px; overflow-wrap: anywhere; }
+    .status { min-height: 24px; margin-top: 12px; color: #1f6feb; font-weight: 700; }
+    .receiver { align-items: flex-start; }
+    .receiver button { flex: 0 0 auto; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+    .badge { display: inline-flex; align-items: center; min-height: 30px; border-radius: 8px; padding: 0 10px; background: #edf1f7; color: #243044; font-size: 13px; font-weight: 700; }
+    .badge.ok { background: #e6f4ea; color: #146c2e; }
+    .badge.warn { background: #fff4db; color: #855c00; }
+    .address-actions { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; }
+    .address-actions code { flex: 1 1 320px; }
+    .hidden { display: none; }
     @media (max-width: 760px) {
-      main {
-        width: min(100vw - 24px, 1120px);
-        padding: 20px 0;
-      }
-
-      header {
-        display: block;
-      }
-
-      .role {
-        margin-top: 14px;
-      }
-
-      .grid {
-        grid-template-columns: 1fr;
-      }
+      main { width: min(100vw - 24px, 1120px); padding: 20px 0; }
+      header { display: block; }
+      .role { margin-top: 14px; }
+      .grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -211,8 +59,8 @@ export const appPage = `<!doctype html>
   <main>
     <header>
       <div>
-        <h1>LAN P2P Transfer</h1>
-        <p>Run this same page on each computer, choose a role, then send files directly over your LAN.</p>
+        <h1>P2P File Transfer</h1>
+        <p>Run this same app on each computer, choose a role, then send files over LAN, relay, or DHT-discovered peers.</p>
       </div>
       <div class="role">
         <button id="senderMode">Sender</button>
@@ -225,6 +73,16 @@ export const appPage = `<!doctype html>
       <p id="nodeName"></p>
       <code id="nodeAddrs">Loading...</code>
       <div class="status" id="status"></div>
+    </section>
+
+    <section class="panel wide">
+      <h2>Network</h2>
+      <div class="badges" id="networkBadges"></div>
+      <p class="meta" id="rendezvous"></p>
+      <div class="address-actions">
+        <code id="circuitAddr">No circuit address yet.</code>
+        <button id="copyCircuit">Copy Circuit Address</button>
+      </div>
     </section>
 
     <section class="grid">
@@ -265,9 +123,12 @@ export const appPage = `<!doctype html>
 
   <script>
     const status = document.querySelector('#status')
-    const receiverStatus = document.querySelector('#receiverStatus')
     const nodeName = document.querySelector('#nodeName')
     const nodeAddrs = document.querySelector('#nodeAddrs')
+    const networkBadges = document.querySelector('#networkBadges')
+    const rendezvous = document.querySelector('#rendezvous')
+    const circuitAddr = document.querySelector('#circuitAddr')
+    const copyCircuit = document.querySelector('#copyCircuit')
     const outbox = document.querySelector('#outbox')
     const receivers = document.querySelector('#receivers')
     const received = document.querySelector('#received')
@@ -280,9 +141,8 @@ export const appPage = `<!doctype html>
     const receiversPanel = document.querySelector('#receiversPanel')
     const receiverPanel = document.querySelector('#receiverPanel')
     const manualAddr = document.querySelector('#manualAddr')
-
     let currentMode = 'sender'
-    let stateTimer
+    let bestCircuitAddr = ''
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -292,18 +152,17 @@ export const appPage = `<!doctype html>
     })
 
     const setMode = async (mode) => {
-      const name = displayName.value.trim()
       const res = await fetch('/api/mode', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode, name })
+        body: JSON.stringify({ mode, name: displayName.value.trim() })
       })
       const body = await res.json()
       if (!res.ok) {
         status.textContent = body.error || 'Could not change mode.'
         return
       }
-      await renderState(body)
+      renderState(body)
     }
 
     const renderListMessage = (list, text) => {
@@ -315,22 +174,19 @@ export const appPage = `<!doctype html>
       list.append(item)
     }
 
-    const renderState = async (state) => {
+    const renderState = (state) => {
       currentMode = state.mode
       senderMode.classList.toggle('active', state.mode === 'sender')
       receiverMode.classList.toggle('active', state.mode === 'receiver')
       senderPanel.classList.toggle('hidden', state.mode !== 'sender')
       receiversPanel.classList.toggle('hidden', state.mode !== 'sender')
       receiverPanel.classList.toggle('hidden', state.mode !== 'receiver')
-
-      if (document.activeElement !== displayName) {
-        displayName.value = state.name || ''
-      }
-
+      if (document.activeElement !== displayName) displayName.value = state.name || ''
       nodeName.textContent = state.mode === 'receiver'
-        ? 'Receiver mode: visible to senders on your LAN.'
+        ? 'Receiver mode: visible through LAN discovery and DHT rendezvous.'
         : 'Sender mode: choose a receiver and push your outbox.'
-      nodeAddrs.textContent = state.addrs.join('\\n')
+      nodeAddrs.textContent = state.addrs.join('\n')
+      renderNetwork(state.network)
 
       outbox.innerHTML = ''
       if (state.outbox.length === 0) {
@@ -364,9 +220,9 @@ export const appPage = `<!doctype html>
           const send = document.createElement('button')
           title.textContent = receiver.name || receiver.peerId
           meta.className = 'meta'
-          meta.textContent = receiver.addr
+          meta.textContent = (receiver.source ? receiver.source + ' - ' : '') + receiver.addr
           send.className = 'success'
-          send.textContent = 'Send'
+          send.textContent = 'Send Files'
           send.onclick = async () => {
             status.textContent = 'Sending to ' + title.textContent + '...'
             const res = await fetch('/api/send', {
@@ -375,9 +231,7 @@ export const appPage = `<!doctype html>
               body: JSON.stringify({ peerId: receiver.peerId })
             })
             const body = await res.json()
-            status.textContent = res.ok
-              ? 'Sent ' + body.files.length + ' file(s).'
-              : body.error || 'Send failed.'
+            status.textContent = res.ok ? 'Sent ' + body.files.length + ' file(s).' : body.error || 'Send failed.'
           }
           info.append(title, meta)
           item.append(info, send)
@@ -407,8 +261,8 @@ export const appPage = `<!doctype html>
         for (const event of state.incoming) {
           const item = document.createElement('li')
           const label = document.createElement('span')
-          label.textContent = event.files.map((file) => file.name).join(', ')
           const meta = document.createElement('span')
+          label.textContent = event.files.map((file) => file.name).join(', ')
           meta.className = 'meta'
           meta.textContent = new Date(event.at).toLocaleTimeString()
           item.append(label, meta)
@@ -417,10 +271,31 @@ export const appPage = `<!doctype html>
       }
     }
 
+    const addBadge = (text, good) => {
+      const badge = document.createElement('span')
+      badge.className = 'badge ' + (good ? 'ok' : 'warn')
+      badge.textContent = text
+      networkBadges.append(badge)
+    }
+
+    const renderNetwork = (network) => {
+      networkBadges.innerHTML = ''
+      addBadge(network.relayService ? 'Relay service on' : 'Relay service off', network.relayService)
+      addBadge(network.relayConfigured ? 'Relay configured' : 'No relay configured', network.relayConfigured)
+      addBadge(network.hasCircuitAddr ? 'Circuit address ready' : 'Waiting for circuit address', network.hasCircuitAddr)
+      addBadge(network.dhtEnabled ? 'DHT ' + network.dhtMode : 'DHT off', network.dhtEnabled)
+      addBadge('DHT peers ' + network.dhtPeers, network.dhtPeers > 0)
+      addBadge('Connected peers ' + network.connectedPeers, network.connectedPeers > 0)
+      rendezvous.textContent = 'Rendezvous: ' + network.rendezvous + ' | Static relays: ' + network.staticRelayCount + ' | Bootstrap peers: ' + network.bootstrapPeerCount
+
+      bestCircuitAddr = network.circuitAddrs[0] || ''
+      circuitAddr.textContent = bestCircuitAddr || 'No circuit address yet.'
+      copyCircuit.disabled = bestCircuitAddr === ''
+    }
+
     const loadState = async () => {
       const res = await fetch('/api/state')
-      const body = await res.json()
-      await renderState(body)
+      renderState(await res.json())
     }
 
     document.querySelector('#upload').onclick = async () => {
@@ -429,13 +304,9 @@ export const appPage = `<!doctype html>
         status.textContent = 'Choose at least one file first.'
         return
       }
-
       status.textContent = 'Adding files...'
       const files = []
-      for (const file of selected) {
-        files.push({ name: file.name, data: await fileToBase64(file) })
-      }
-
+      for (const file of selected) files.push({ name: file.name, data: await fileToBase64(file) })
       const res = await fetch('/api/files', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -453,7 +324,6 @@ export const appPage = `<!doctype html>
         status.textContent = 'Paste a receiver multiaddr first.'
         return
       }
-
       status.textContent = 'Sending...'
       const res = await fetch('/api/send', {
         method: 'POST',
@@ -461,23 +331,25 @@ export const appPage = `<!doctype html>
         body: JSON.stringify({ addr })
       })
       const body = await res.json()
-      status.textContent = res.ok
-        ? 'Sent ' + body.files.length + ' file(s).'
-        : body.error || 'Send failed.'
+      status.textContent = res.ok ? 'Sent ' + body.files.length + ' file(s).' : body.error || 'Send failed.'
+    }
+
+    copyCircuit.onclick = async () => {
+      if (bestCircuitAddr === '') {
+        status.textContent = 'No circuit address to copy yet.'
+        return
+      }
+      await navigator.clipboard.writeText(bestCircuitAddr)
+      status.textContent = 'Circuit address copied.'
     }
 
     senderMode.onclick = () => setMode('sender')
     receiverMode.onclick = () => setMode('receiver')
     displayName.onchange = () => {
-      if (currentMode === 'receiver') {
-        setMode('receiver')
-      }
+      if (currentMode === 'receiver') setMode('receiver')
     }
-
-    loadState().catch((err) => {
-      status.textContent = err.message
-    })
-    stateTimer = setInterval(loadState, 2000)
+    loadState().catch((err) => { status.textContent = err.message })
+    setInterval(loadState, 2000)
   </script>
 </body>
 </html>`
