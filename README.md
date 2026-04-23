@@ -63,29 +63,6 @@ go run ./cmd/app
 
 LAN discovery 只會在同一個區網內生效。
 
-## 單機雙開測試
-
-只測基本 sender / receiver 流程時，一台電腦就可以開兩個 terminal 測試。兩個 instance 必須使用不同的 Web port、P2P port 和 key。app 預設會開啟 local discovery，讓同一台電腦上的 receiver 可以穩定出現在 sender 的 receiver list。
-
-Sender：
-
-```bash
-APP_WEB_PORT=3000 APP_P2P_PORT=4001 go run ./cmd/app
-```
-
-Receiver：
-
-```bash
-APP_WEB_PORT=3001 APP_P2P_PORT=4002 go run ./cmd/app
-```
-
-開啟：
-
-- `http://127.0.0.1:3000`
-- `http://127.0.0.1:3001`
-
-如果你手動指定 `P2PTEST_KEY_PATH`，請確認 sender 和 receiver 不要使用同一個 key 檔，否則兩邊會變成同一個 Peer ID，receiver 不會出現在 sender 的 receiver list。
-
 ## 跨 NAT 傳檔
 
 跨不同網路時，需要至少一台 public relay/bootstrap node。最常見做法是用 VPS。
@@ -150,7 +127,6 @@ Receiver 切到 `Receiver` 後，會透過 DHT rendezvous 公告自己。Sender 
 - `APP_P2P_PORT`：libp2p listen port，預設 `0`，代表自動分配。
 - `APP_DISCOVERY_GROUP`：LAN multicast group，預設 `239.255.77.77`。
 - `APP_DISCOVERY_PORT`：LAN discovery UDP port，預設 `50197`。
-- `APP_LOCAL_DISCOVERY=false`：關閉單機雙開測試用的 local discovery。預設開啟。
 - `APP_MDNS_ENABLED=false`：關閉 libp2p mDNS discovery。預設開啟。
 - `APP_RELAY_SERVICE=true`：讓這個節點提供 circuit relay 和 AutoNAT service。通常只開在 public VPS。
 - `APP_ANNOUNCE_ADDRS="<multiaddr>[,<multiaddr>]"`：手動公告 public address，適合雲端機器。
@@ -174,7 +150,6 @@ Receiver 切到 `Receiver` 後，會透過 DHT rendezvous 公告自己。Sender 
 │       ├── ui.go          # 內嵌瀏覽器 UI
 │       ├── p2p.go         # libp2p stream handler 和傳檔 dial helper
 │       ├── discovery.go   # LAN multicast/broadcast receiver discovery
-│       ├── local_discovery.go # 單機雙開測試用 local discovery
 │       ├── mdns.go        # libp2p mDNS discovery
 │       ├── dht.go         # DHT rendezvous 自動節點發現
 │       ├── nat.go         # relay、AutoRelay、hole punching、bootstrap 設定

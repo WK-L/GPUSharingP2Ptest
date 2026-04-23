@@ -11,6 +11,7 @@ import (
 
 	host "github.com/libp2p/go-libp2p/core/host"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/sys/unix"
 )
 
 func startDiscovery(ctx context.Context, node host.Host, group string, port int) {
@@ -136,15 +137,15 @@ func interfaceHasIPv4(iface net.Interface) bool {
 func reuseUDPPort(network string, address string, conn syscall.RawConn) error {
 	var controlErr error
 	if err := conn.Control(func(fd uintptr) {
-		controlErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+		controlErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
 		if controlErr != nil {
 			return
 		}
-		controlErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
+		controlErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
 		if controlErr != nil {
 			return
 		}
-		controlErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
+		controlErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_BROADCAST, 1)
 	}); err != nil {
 		return err
 	}

@@ -16,17 +16,9 @@ func defaultKeyPath() string {
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".p2ptest", defaultKeyFileName())
+		return filepath.Join(".p2ptest", "sender.key")
 	}
-	return filepath.Join(home, ".p2ptest", defaultKeyFileName())
-}
-
-func defaultKeyFileName() string {
-	webPort := getenv("APP_WEB_PORT", "3000")
-	if webPort == "3000" {
-		return "sender.key"
-	}
-	return "app-" + safeFileName(webPort) + ".key"
+	return filepath.Join(home, ".p2ptest", "sender.key")
 }
 
 func loadOrCreatePrivateKey(path string) (crypto.PrivKey, string, bool, error) {

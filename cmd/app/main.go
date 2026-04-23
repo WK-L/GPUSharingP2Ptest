@@ -58,7 +58,6 @@ func main() {
 	}
 	go startDHTDiscovery(ctx, node, router)
 	go startMDNSDiscovery(ctx, node)
-	go startLocalDiscovery(ctx, node)
 	go startDiscovery(ctx, node, discoveryGroup, discoveryPort)
 	startWebServer(node, router, webHost, webPort)
 }
