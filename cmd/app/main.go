@@ -10,6 +10,10 @@ import (
 )
 
 func main() {
+	if err := loadDotEnv(".env"); err != nil {
+		log.Fatal(err)
+	}
+
 	ctx := context.Background()
 	priv, keyPath, created, err := loadOrCreatePrivateKey(defaultKeyPath())
 	if err != nil {

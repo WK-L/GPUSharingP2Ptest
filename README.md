@@ -35,11 +35,19 @@ mkdir -p outbox received
 - `outbox/`：sender 要傳出的檔案。
 - `received/`：receiver 收到的檔案。
 
+建立 `.env`：
+
+```bash
+cp .env.example .env
+```
+
 ## 啟動
 
 ```bash
 go run ./cmd/app
 ```
+
+程式啟動時會自動讀取專案根目錄的 `.env`。如果同一個變數同時存在於 shell 環境與 `.env`，會以 shell 環境為準。
 
 啟動後，終端機會印出：
 
@@ -72,15 +80,25 @@ LAN discovery 只會在同一個區網內生效。
 在有 public IP、且 TCP port 有開的機器上執行：
 
 ```bash
-APP_RELAY_SERVICE=true APP_P2P_PORT=4001 go run ./cmd/app
+cp .env.example .env
 ```
 
-如果這台機器只印出 private IP，但你知道它的 public IP 或 DNS，可以手動公告 public address：
+把 `.env` 改成至少包含：
 
 ```bash
-APP_RELAY_SERVICE=true \
-APP_P2P_PORT=4001 \
-APP_ANNOUNCE_ADDRS="/ip4/203.0.113.10/tcp/4001" \
+APP_RELAY_SERVICE=true
+APP_P2P_PORT=4001
+```
+
+如果這台機器只印出 private IP，但你知道它的 public IP 或 DNS，再補上：
+
+```bash
+APP_ANNOUNCE_ADDRS=/ip4/203.0.113.10/tcp/4001
+```
+
+然後執行：
+
+```bash
 go run ./cmd/app
 ```
 
@@ -95,8 +113,13 @@ go run ./cmd/app
 Sender 和 Receiver 都用同一個 relay address 啟動：
 
 ```bash
-APP_STATIC_RELAYS="/ip4/203.0.113.10/tcp/4001/p2p/12D3KooW..." \
-APP_BOOTSTRAP_PEERS="/ip4/203.0.113.10/tcp/4001/p2p/12D3KooW..." \
+APP_STATIC_RELAYS=/ip4/203.0.113.10/tcp/4001/p2p/12D3KooW...
+APP_BOOTSTRAP_PEERS=/ip4/203.0.113.10/tcp/4001/p2p/12D3KooW...
+```
+
+寫進各自的 `.env` 後再執行：
+
+```bash
 go run ./cmd/app
 ```
 
@@ -120,6 +143,12 @@ Receiver 切到 `Receiver` 後，會透過 DHT rendezvous 公告自己。Sender 
 - Receiver 是否已經切到 `Receiver` 模式。
 
 ## 環境變數
+
+建議把這些設定寫在專案根目錄的 `.env`。可先從 `.env.example` 複製一份：
+
+```bash
+cp .env.example .env
+```
 
 - `APP_WEB_HOST`：HTTP UI listen host，預設 `0.0.0.0`。
 - `APP_WEB_PORT`：HTTP UI port，預設 `3000`。

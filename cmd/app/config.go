@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	host "github.com/libp2p/go-libp2p/core/host"
 	ma "github.com/multiformats/go-multiaddr"
@@ -63,12 +65,62 @@ func webURLs(webPort string) []string {
 	}
 	return urls
 }
+
 func hostName() string {
 	name, err := os.Hostname()
 	if err != nil || name == "" {
 		return "receiver"
 	}
 	return name
+}
+
+func loadDotEnv(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for lineNo := 1; scanner.Scan(); lineNo++ {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "export ") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		}
+
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			return fmt.Errorf("%s:%d: expected KEY=VALUE", path, lineNo)
+		}
+
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" {
+			return fmt.Errorf("%s:%d: empty key", path, lineNo)
+		}
+
+		if len(value) >= 2 {
+			if (value[0] == '"' && value[len(value)-1] == '"') || (value[0] == '\'' && value[len(value)-1] == '\'') {
+				value = value[1 : len(value)-1]
+			}
+		}
+
+		if _, exists := os.LookupEnv(key); exists {
+			continue
+		}
+		if err := os.Setenv(key, value); err != nil {
+			return err
+		}
+	}
+
+	return scanner.Err()
 }
 
 func getenv(key string, fallbackValue string) string {
