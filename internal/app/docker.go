@@ -60,6 +60,10 @@ func executeDeploy(payload deployPayload) deployResponse {
 	if err != nil {
 		return deployResponse{Message: err.Error()}
 	}
+	deployDir, err = filepath.Abs(deployDir)
+	if err != nil {
+		return deployResponse{Message: err.Error()}
+	}
 
 	if err := extractDeployArchive(archiveBytes, payload.Archive.Name, deployDir); err != nil {
 		return deployResponse{Message: err.Error(), Directory: deployDir}
@@ -236,7 +240,11 @@ func runDockerPlatformCommand(deployDir string, runtimeName string, args []strin
 			}
 			wslArgs = append(wslArgs, args...)
 		}
-		return exec.Command("wsl", wslArgs...).CombinedOutput()
+		output, err := exec.Command("wsl", wslArgs...).CombinedOutput()
+		if err != nil {
+			return output, formatCommandError(err, output)
+		}
+		return output, nil
 	}
 
 	command := exec.Command(args[0], args[1:]...)
@@ -244,7 +252,11 @@ func runDockerPlatformCommand(deployDir string, runtimeName string, args []strin
 	if runtimeName != "" {
 		command.Env = append(os.Environ(), "DOCKER_DEFAULT_RUNTIME="+runtimeName)
 	}
-	return command.CombinedOutput()
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return output, formatCommandError(err, output)
+	}
+	return output, nil
 }
 
 func dockerRuntimeExists(output []byte, runtimeName string) bool {
@@ -255,6 +267,14 @@ func dockerRuntimeExists(output []byte, runtimeName string) bool {
 func shellEscape(value string) string {
 	value = strings.ReplaceAll(value, `'`, `'\''`)
 	return "'" + value + "'"
+}
+
+func formatCommandError(err error, output []byte) error {
+	text := strings.TrimSpace(string(output))
+	if text == "" {
+		return err
+	}
+	return fmt.Errorf("%w: %s", err, text)
 }
 
 func extractDeployArchive(archive []byte, archiveName string, destDir string) error {
