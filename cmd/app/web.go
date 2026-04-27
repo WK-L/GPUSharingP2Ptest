@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -29,18 +28,13 @@ func startWebServer(node host.Host, router *kaddht.IpfsDHT, webHost string, webP
 			return
 		}
 
-		if r.Method == http.MethodPost && r.URL.Path == "/api/mode" {
-			var body modeRequest
+		if r.Method == http.MethodPost && r.URL.Path == "/api/node" {
+			var body nodeRequest
 			if err := readJSON(r, &body); err != nil {
 				sendError(w, err)
 				return
 			}
-			if body.Mode != "sender" && body.Mode != "receiver" {
-				sendError(w, errors.New("mode must be sender or receiver"))
-				return
-			}
 			state.mu.Lock()
-			state.mode = body.Mode
 			if strings.TrimSpace(body.Name) != "" {
 				state.name = strings.TrimSpace(body.Name)
 			}
@@ -49,13 +43,13 @@ func startWebServer(node host.Host, router *kaddht.IpfsDHT, webHost string, webP
 			return
 		}
 
-		if r.Method == http.MethodPost && r.URL.Path == "/api/files" {
-			var body filesRequest
+		if r.Method == http.MethodPost && r.URL.Path == "/api/bundles" {
+			var body bundlesRequest
 			if err := readJSON(r, &body); err != nil {
 				sendError(w, err)
 				return
 			}
-			if err := os.MkdirAll(outboxDir, 0755); err != nil {
+			if err := os.MkdirAll(bundleDir, 0755); err != nil {
 				sendError(w, err)
 				return
 			}
@@ -65,7 +59,7 @@ func startWebServer(node host.Host, router *kaddht.IpfsDHT, webHost string, webP
 					sendError(w, err)
 					return
 				}
-				if err := os.WriteFile(filepath.Join(outboxDir, safeFileName(file.Name)), data, 0644); err != nil {
+				if err := os.WriteFile(filepath.Join(bundleDir, safeFileName(file.Name)), data, 0644); err != nil {
 					sendError(w, err)
 					return
 				}
@@ -74,31 +68,28 @@ func startWebServer(node host.Host, router *kaddht.IpfsDHT, webHost string, webP
 			return
 		}
 
-		if r.Method == http.MethodDelete && r.URL.Path == "/api/files" {
+		if r.Method == http.MethodDelete && r.URL.Path == "/api/bundles" {
 			name := safeFileName(r.URL.Query().Get("name"))
-			_ = os.Remove(filepath.Join(outboxDir, name))
-			sendJSON(w, http.StatusOK, buildState(node, router, webPort))
+			_ = os.Remove(filepath.Join(bundleDir, name))
 			return
 		}
 
-		if r.Method == http.MethodPost && r.URL.Path == "/api/send" {
-			var body sendRequest
+		if r.Method == http.MethodPost && r.URL.Path == "/api/deploy" {
+			var body deployRequest
 			if err := readJSON(r, &body); err != nil {
 				sendError(w, err)
 				return
 			}
-			files, err := sendOutbox(node, body)
+			response, err := sendDeployBundle(node, body)
 			if err != nil {
+				if response.Message != "" {
+					sendJSON(w, http.StatusInternalServerError, response)
+					return
+				}
 				sendError(w, err)
 				return
 			}
-			sendJSON(w, http.StatusOK, map[string]any{"files": files})
-			return
-		}
-
-		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/received/") {
-			name := safeFileName(strings.TrimPrefix(r.URL.Path, "/received/"))
-			http.ServeFile(w, r, filepath.Join(receivedDir, name))
+			sendJSON(w, http.StatusOK, response)
 			return
 		}
 

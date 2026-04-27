@@ -6,20 +6,20 @@ import (
 )
 
 type appState struct {
-	mu        sync.Mutex
-	mode      string
-	name      string
-	receivers map[string]receiverInfo
-	incoming  []incomingEvent
+	mu      sync.Mutex
+	name    string
+	peers   map[string]peerNode
+	deploys []deployEvent
 }
 
-type receiverInfo struct {
-	PeerID string    `json:"peerId"`
-	Name   string    `json:"name"`
-	Addr   string    `json:"addr"`
-	Addrs  []string  `json:"addrs"`
-	Source string    `json:"source"`
-	SeenAt time.Time `json:"-"`
+type peerNode struct {
+	PeerID        string    `json:"peerId"`
+	Name          string    `json:"name"`
+	Addr          string    `json:"addr"`
+	Addrs         []string  `json:"addrs"`
+	Source        string    `json:"source"`
+	DeployEnabled bool      `json:"deployEnabled"`
+	SeenAt        time.Time `json:"-"`
 }
 
 type peerBrief struct {
@@ -27,52 +27,46 @@ type peerBrief struct {
 	Name   string `json:"name"`
 }
 
-type fileItem struct {
+type bundleFile struct {
 	Name string `json:"name"`
 	Data string `json:"data,omitempty"`
-	Path string `json:"path,omitempty"`
 }
 
-type filePayload struct {
-	Files     []fileItem `json:"files"`
-	CreatedAt string     `json:"createdAt"`
-	Sender    *peerBrief `json:"sender,omitempty"`
-}
-
-type incomingEvent struct {
-	At     string     `json:"at"`
-	Sender *peerBrief `json:"sender,omitempty"`
-	Files  []fileItem `json:"files,omitempty"`
+type deployEvent struct {
+	At          string     `json:"at"`
+	Source      *peerBrief `json:"source,omitempty"`
+	ProjectName string     `json:"projectName"`
+	ArchiveName string     `json:"archiveName"`
+	Status      string     `json:"status"`
+	Output      string     `json:"output,omitempty"`
 }
 
 type discoveryAnnouncement struct {
-	App     string   `json:"app"`
-	Role    string   `json:"role"`
-	PeerID  string   `json:"peerId"`
-	Name    string   `json:"name"`
-	Addrs   []string `json:"addrs"`
-	WebURLs []string `json:"webUrls"`
-	At      string   `json:"at"`
+	App           string   `json:"app"`
+	PeerID        string   `json:"peerId"`
+	Name          string   `json:"name"`
+	Addrs         []string `json:"addrs"`
+	WebURLs       []string `json:"webUrls"`
+	DeployEnabled bool     `json:"deployEnabled"`
+	At            string   `json:"at"`
 }
 
 type peerInfoResponse struct {
-	Mode   string   `json:"mode"`
-	Name   string   `json:"name"`
-	PeerID string   `json:"peerId"`
-	Addrs  []string `json:"addrs"`
+	Name          string   `json:"name"`
+	PeerID        string   `json:"peerId"`
+	Addrs         []string `json:"addrs"`
+	DeployEnabled bool     `json:"deployEnabled"`
 }
 
 type stateResponse struct {
-	Mode      string          `json:"mode"`
-	Name      string          `json:"name"`
-	PeerID    string          `json:"peerId"`
-	Addrs     []string        `json:"addrs"`
-	Network   networkStatus   `json:"network"`
-	WebURLs   []string        `json:"webUrls"`
-	Outbox    []string        `json:"outbox"`
-	Received  []string        `json:"received"`
-	Receivers []receiverInfo  `json:"receivers"`
-	Incoming  []incomingEvent `json:"incoming"`
+	Name        string        `json:"name"`
+	PeerID      string        `json:"peerId"`
+	Addrs       []string      `json:"addrs"`
+	Network     networkStatus `json:"network"`
+	WebURLs     []string      `json:"webUrls"`
+	Bundles     []string      `json:"bundles"`
+	Peers       []peerNode    `json:"peers"`
+	Deployments []deployEvent `json:"deployments"`
 }
 
 type networkStatus struct {
@@ -87,18 +81,39 @@ type networkStatus struct {
 	HasCircuitAddr     bool     `json:"hasCircuitAddr"`
 	CircuitAddrs       []string `json:"circuitAddrs"`
 	RelayConfigured    bool     `json:"relayConfigured"`
+	DockerDeploy       bool     `json:"dockerDeploy"`
 }
 
-type modeRequest struct {
-	Mode string `json:"mode"`
+type nodeRequest struct {
 	Name string `json:"name"`
 }
 
-type filesRequest struct {
-	Files []fileItem `json:"files"`
+type bundlesRequest struct {
+	Files []bundleFile `json:"files"`
 }
 
-type sendRequest struct {
-	PeerID string `json:"peerId"`
-	Addr   string `json:"addr"`
+type deployRequest struct {
+	PeerID      string `json:"peerId"`
+	Addr        string `json:"addr"`
+	ArchiveName string `json:"archiveName"`
+	ProjectName string `json:"projectName"`
+	ComposeFile string `json:"composeFile"`
+	Token       string `json:"token"`
+}
+
+type deployPayload struct {
+	ProjectName string     `json:"projectName"`
+	ComposeFile string     `json:"composeFile"`
+	RequestedAt string     `json:"requestedAt"`
+	Source      *peerBrief `json:"source,omitempty"`
+	Archive     bundleFile `json:"archive"`
+	Token       string     `json:"token,omitempty"`
+}
+
+type deployResponse struct {
+	OK          bool   `json:"ok"`
+	Message     string `json:"message"`
+	Output      string `json:"output,omitempty"`
+	ProjectName string `json:"projectName,omitempty"`
+	Directory   string `json:"directory,omitempty"`
 }

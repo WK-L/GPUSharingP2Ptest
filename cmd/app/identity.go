@@ -16,9 +16,9 @@ func defaultKeyPath() string {
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".p2ptest", "sender.key")
+		return filepath.Join(".p2ptest", "node.key")
 	}
-	return filepath.Join(home, ".p2ptest", "sender.key")
+	return filepath.Join(home, ".p2ptest", "node.key")
 }
 
 func loadOrCreatePrivateKey(path string) (crypto.PrivKey, string, bool, error) {

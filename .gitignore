@@ -1,8 +1,7 @@
 .env
 node_modules/
 .DS_Store
-outbox/*
-received/*
-!outbox/.gitkeep
-!received/.gitkeep
-sender.addr
+bundles/*
+deployments/*
+!bundles/.gitkeep
+!deployments/.gitkeep

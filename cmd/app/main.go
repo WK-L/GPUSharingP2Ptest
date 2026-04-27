@@ -42,8 +42,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	node.SetStreamHandler(filesPushProtocol, handleFilesPush)
 	node.SetStreamHandler(peerInfoProtocol, newPeerInfoHandler(node))
+	node.SetStreamHandler(deployProtocol, handleDeployRequest)
 
 	fmt.Println("Peer ID:", node.ID().String())
 	if created {

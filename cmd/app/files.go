@@ -13,47 +13,16 @@ import (
 
 var fileNameCleaner = regexp.MustCompile(`[^a-zA-Z0-9._ -]`)
 
-func readOutboxPayload() (filePayload, error) {
-	names, err := listFiles(outboxDir)
+func readBundleFile(name string) (bundleFile, error) {
+	name = safeFileName(name)
+	bytes, err := os.ReadFile(filepath.Join(bundleDir, name))
 	if err != nil {
-		return filePayload{}, err
+		return bundleFile{}, err
 	}
-	payload := filePayload{
-		Files:     make([]fileItem, 0, len(names)),
-		CreatedAt: time.Now().Format(time.RFC3339),
-	}
-	for _, name := range names {
-		bytes, err := os.ReadFile(filepath.Join(outboxDir, name))
-		if err != nil {
-			return filePayload{}, err
-		}
-		payload.Files = append(payload.Files, fileItem{
-			Name: name,
-			Data: base64.StdEncoding.EncodeToString(bytes),
-		})
-	}
-	return payload, nil
-}
-
-func saveReceivedPayload(payload filePayload) ([]fileItem, error) {
-	if err := os.MkdirAll(receivedDir, 0755); err != nil {
-		return nil, err
-	}
-
-	saved := make([]fileItem, 0, len(payload.Files))
-	for _, file := range payload.Files {
-		name := safeFileName(file.Name)
-		bytes, err := base64.StdEncoding.DecodeString(file.Data)
-		if err != nil {
-			return nil, err
-		}
-		path := filepath.Join(receivedDir, name)
-		if err := os.WriteFile(path, bytes, 0644); err != nil {
-			return nil, err
-		}
-		saved = append(saved, fileItem{Name: name, Path: path})
-	}
-	return saved, nil
+	return bundleFile{
+		Name: name,
+		Data: base64.StdEncoding.EncodeToString(bytes),
+	}, nil
 }
 
 func listFiles(dir string) ([]string, error) {

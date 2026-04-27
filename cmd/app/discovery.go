@@ -47,7 +47,7 @@ func startDiscovery(ctx context.Context, node host.Host, group string, port int)
 			if err := json.Unmarshal(buf[:n], &announcement); err != nil {
 				continue
 			}
-			if announcement.App != "p2ptest-lan" || announcement.Role != "receiver" {
+			if announcement.App != "p2ptest-lan" {
 				continue
 			}
 			if announcement.PeerID == node.ID().String() || len(announcement.Addrs) == 0 {
@@ -55,13 +55,14 @@ func startDiscovery(ctx context.Context, node host.Host, group string, port int)
 			}
 
 			state.mu.Lock()
-			state.receivers[announcement.PeerID] = receiverInfo{
-				PeerID: announcement.PeerID,
-				Name:   fallback(announcement.Name, announcement.PeerID),
-				Addr:   announcement.Addrs[0],
-				Addrs:  announcement.Addrs,
-				Source: "LAN",
-				SeenAt: time.Now(),
+			state.peers[announcement.PeerID] = peerNode{
+				PeerID:        announcement.PeerID,
+				Name:          fallback(announcement.Name, announcement.PeerID),
+				Addr:          announcement.Addrs[0],
+				Addrs:         announcement.Addrs,
+				Source:        "LAN",
+				DeployEnabled: announcement.DeployEnabled,
+				SeenAt:        time.Now(),
 			}
 			state.mu.Unlock()
 		}
@@ -75,27 +76,24 @@ func startDiscovery(ctx context.Context, node host.Host, group string, port int)
 			return
 		case <-ticker.C:
 			state.mu.Lock()
-			mode := state.mode
 			name := state.name
 			state.mu.Unlock()
-			if mode != "receiver" {
-				continue
-			}
 
 			body, _ := json.Marshal(discoveryAnnouncement{
-				App:     "p2ptest-lan",
-				Role:    "receiver",
-				PeerID:  node.ID().String(),
-				Name:    name,
-				Addrs:   announceAddrs(node),
-				WebURLs: webURLs(getenv("APP_WEB_PORT", "3000")),
-				At:      time.Now().Format(time.RFC3339),
+				App:           "p2ptest-lan",
+				PeerID:        node.ID().String(),
+				Name:          name,
+				Addrs:         announceAddrs(node),
+				WebURLs:       webURLs(getenv("APP_WEB_PORT", "3000")),
+				DeployEnabled: getenvBool("APP_DOCKER_DEPLOY_ENABLED", false),
+				At:            time.Now().Format(time.RFC3339),
 			})
 			_, _ = packetConn.WriteTo(body, groupAddr)
 			_, _ = packetConn.WriteTo(body, broadcastAddr)
 		}
 	}
 }
+
 func multicastInterfaces() []net.Interface {
 	interfaces, err := net.Interfaces()
 	if err != nil {

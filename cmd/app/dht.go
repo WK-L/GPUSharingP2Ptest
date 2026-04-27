@@ -47,21 +47,16 @@ func startDHTDiscovery(ctx context.Context, node host.Host, router *kaddht.IpfsD
 	}
 
 	discoveryClient := routingdisc.NewRoutingDiscovery(router)
-	go advertiseReceivers(ctx, discoveryClient)
-	go findReceivers(ctx, node, discoveryClient)
+	go advertiseNode(ctx, discoveryClient)
+	go findNodes(ctx, node, discoveryClient)
 }
 
-func advertiseReceivers(ctx context.Context, discoveryClient *routingdisc.RoutingDiscovery) {
+func advertiseNode(ctx context.Context, discoveryClient *routingdisc.RoutingDiscovery) {
 	ticker := time.NewTicker(2 * time.Minute)
 	defer ticker.Stop()
 
 	for {
-		state.mu.Lock()
-		mode := state.mode
-		state.mu.Unlock()
-		if mode == "receiver" {
-			advertiseOnce(ctx, discoveryClient)
-		}
+		advertiseOnce(ctx, discoveryClient)
 
 		select {
 		case <-ctx.Done():
@@ -80,20 +75,15 @@ func advertiseOnce(ctx context.Context, discoveryClient *routingdisc.RoutingDisc
 		log.Println("DHT advertise error:", err)
 		return
 	}
-	log.Printf("advertised receiver in DHT for %s\n", ttl)
+	log.Printf("advertised node in DHT for %s\n", ttl)
 }
 
-func findReceivers(ctx context.Context, node host.Host, discoveryClient *routingdisc.RoutingDiscovery) {
+func findNodes(ctx context.Context, node host.Host, discoveryClient *routingdisc.RoutingDiscovery) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
 	for {
-		state.mu.Lock()
-		mode := state.mode
-		state.mu.Unlock()
-		if mode == "sender" {
-			findReceiversOnce(ctx, node, discoveryClient)
-		}
+		findNodesOnce(ctx, node, discoveryClient)
 
 		select {
 		case <-ctx.Done():
@@ -103,7 +93,7 @@ func findReceivers(ctx context.Context, node host.Host, discoveryClient *routing
 	}
 }
 
-func findReceiversOnce(ctx context.Context, node host.Host, discoveryClient *routingdisc.RoutingDiscovery) {
+func findNodesOnce(ctx context.Context, node host.Host, discoveryClient *routingdisc.RoutingDiscovery) {
 	findCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -122,11 +112,11 @@ func findReceiversOnce(ctx context.Context, node host.Host, discoveryClient *rou
 		peerInfo, err := fetchPeerInfo(connectCtx, node, info)
 		connectCancel()
 		if err != nil {
-			removeReceiver(info.ID, "DHT")
+			removePeerNode(info.ID, "DHT")
 			continue
 		}
 
-		upsertReceiverFromPeerInfo(peerInfo, "DHT")
+		upsertPeerNodeFromPeerInfo(peerInfo, "DHT")
 	}
 }
 

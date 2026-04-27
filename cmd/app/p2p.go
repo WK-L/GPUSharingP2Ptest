@@ -22,10 +22,10 @@ func newPeerInfoHandler(node host.Host) network.StreamHandler {
 
 		state.mu.Lock()
 		response := peerInfoResponse{
-			Mode:   state.mode,
-			Name:   state.name,
-			PeerID: node.ID().String(),
-			Addrs:  announceAddrs(node),
+			Name:          state.name,
+			PeerID:        node.ID().String(),
+			Addrs:         announceAddrs(node),
+			DeployEnabled: dockerDeployEnabled(),
 		}
 		state.mu.Unlock()
 
@@ -35,70 +35,88 @@ func newPeerInfoHandler(node host.Host) network.StreamHandler {
 	}
 }
 
-func handleFilesPush(s network.Stream) {
+func handleDeployRequest(s network.Stream) {
 	defer s.Close()
 
 	bytes, err := io.ReadAll(s)
 	if err != nil {
-		log.Println("receiver push read error:", err)
+		_ = writeStreamJSON(s, deployResponse{Message: "could not read deploy request"})
+		log.Println("deploy read error:", err)
 		return
 	}
 
-	var payload filePayload
+	var payload deployPayload
 	if err := json.Unmarshal(bytes, &payload); err != nil {
-		log.Println("receiver push json error:", err)
+		_ = writeStreamJSON(s, deployResponse{Message: "deploy request json is invalid"})
+		log.Println("deploy json error:", err)
 		return
 	}
 
-	saved, err := saveReceivedPayload(payload)
-	if err != nil {
-		log.Println("receiver save error:", err)
-		return
+	response := executeDeploy(payload, s.Conn().RemotePeer().String())
+	if err := writeStreamJSON(s, response); err != nil {
+		log.Println("deploy response write error:", err)
 	}
-
-	event := incomingEvent{
-		At:     time.Now().Format(time.RFC3339),
-		Sender: payload.Sender,
-		Files:  saved,
-	}
-	state.mu.Lock()
-	state.incoming = append([]incomingEvent{event}, state.incoming...)
-	state.incoming = firstIncoming(state.incoming, 20)
-	state.mu.Unlock()
-	log.Printf("received %d file(s)\n", len(saved))
 }
 
-func sendOutbox(node host.Host, req sendRequest) ([]fileItem, error) {
+func sendDeployBundle(node host.Host, req deployRequest) (deployResponse, error) {
 	addr := req.Addr
 	if addr == "" {
 		state.mu.Lock()
-		receiver, ok := state.receivers[req.PeerID]
+		peerNode, ok := state.peers[req.PeerID]
 		state.mu.Unlock()
 		if !ok {
-			return nil, errors.New("receiver not found or no longer visible")
+			return deployResponse{}, errors.New("peer not found or no longer visible")
 		}
-		addr = receiver.Addr
+		addr = peerNode.Addr
 	}
 
-	payload, err := readOutboxPayload()
+	archive, err := readBundleFile(req.ArchiveName)
 	if err != nil {
-		return nil, err
+		return deployResponse{}, err
 	}
+
 	state.mu.Lock()
-	payload.Sender = &peerBrief{PeerID: node.ID().String(), Name: state.name}
+	sourceNode := &peerBrief{PeerID: node.ID().String(), Name: state.name}
 	state.mu.Unlock()
 
-	stream, err := newStreamToAddr(node, addr, filesPushProtocol)
+	payload := deployPayload{
+		ProjectName: req.ProjectName,
+		ComposeFile: req.ComposeFile,
+		RequestedAt: time.Now().Format(time.RFC3339),
+		Source:      sourceNode,
+		Archive:     archive,
+		Token:       req.Token,
+	}
+
+	stream, err := newStreamToAddr(node, addr, deployProtocol)
 	if err != nil {
-		return nil, err
+		return deployResponse{}, err
 	}
 	defer stream.Close()
 
 	if err := writeStreamJSON(stream, payload); err != nil {
-		return nil, err
+		return deployResponse{}, err
+	}
+	if err := stream.CloseWrite(); err != nil {
+		return deployResponse{}, err
 	}
 
-	return payload.Files, nil
+	responseBytes, err := io.ReadAll(io.LimitReader(stream, 1024*1024))
+	if err != nil {
+		return deployResponse{}, err
+	}
+
+	var response deployResponse
+	if err := json.Unmarshal(responseBytes, &response); err != nil {
+		return deployResponse{}, err
+	}
+	if !response.OK {
+		if response.Message == "" {
+			response.Message = "deployment failed"
+		}
+		return response, errors.New(response.Message)
+	}
+	return response, nil
 }
 
 func newStreamToAddr(node host.Host, addr string, proto protocol.ID) (network.Stream, error) {
@@ -146,27 +164,28 @@ func fetchPeerInfo(ctx context.Context, node host.Host, info peer.AddrInfo) (*pe
 	return &response, nil
 }
 
-func upsertReceiverFromPeerInfo(info *peerInfoResponse, source string) {
-	if info == nil || info.Mode != "receiver" || len(info.Addrs) == 0 {
+func upsertPeerNodeFromPeerInfo(info *peerInfoResponse, source string) {
+	if info == nil || len(info.Addrs) == 0 {
 		return
 	}
 
 	state.mu.Lock()
-	state.receivers[info.PeerID] = receiverInfo{
-		PeerID: info.PeerID,
-		Name:   fallback(info.Name, info.PeerID),
-		Addr:   info.Addrs[0],
-		Addrs:  info.Addrs,
-		Source: source,
-		SeenAt: time.Now(),
+	state.peers[info.PeerID] = peerNode{
+		PeerID:        info.PeerID,
+		Name:          fallback(info.Name, info.PeerID),
+		Addr:          info.Addrs[0],
+		Addrs:         info.Addrs,
+		Source:        source,
+		DeployEnabled: info.DeployEnabled,
+		SeenAt:        time.Now(),
 	}
 	state.mu.Unlock()
 }
 
-func removeReceiver(peerID peer.ID, source string) {
+func removePeerNode(peerID peer.ID, source string) {
 	state.mu.Lock()
-	if receiver, ok := state.receivers[peerID.String()]; ok && receiver.Source == source {
-		delete(state.receivers, peerID.String())
+	if peerNode, ok := state.peers[peerID.String()]; ok && peerNode.Source == source {
+		delete(state.peers, peerID.String())
 	}
 	state.mu.Unlock()
 }

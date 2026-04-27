@@ -10,58 +10,55 @@ import (
 )
 
 var state = &appState{
-	mode:      "sender",
-	name:      hostName(),
-	receivers: make(map[string]receiverInfo),
+	name:  hostName(),
+	peers: make(map[string]peerNode),
 }
 
 func buildState(node host.Host, router *kaddht.IpfsDHT, webPort string) stateResponse {
-	outbox, _ := listFiles(outboxDir)
-	received, _ := listFiles(receivedDir)
+	bundles, _ := listFiles(bundleDir)
 
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	pruneReceiversLocked()
+	prunePeersLocked()
 
-	receivers := make([]receiverInfo, 0, len(state.receivers))
-	for _, receiver := range state.receivers {
-		receivers = append(receivers, receiver)
+	peers := make([]peerNode, 0, len(state.peers))
+	for _, peerNode := range state.peers {
+		peers = append(peers, peerNode)
 	}
-	sort.Slice(receivers, func(i, j int) bool {
-		return receivers[i].Name < receivers[j].Name
+	sort.Slice(peers, func(i, j int) bool {
+		return peers[i].Name < peers[j].Name
 	})
 
 	return stateResponse{
-		Mode:      state.mode,
-		Name:      state.name,
-		PeerID:    node.ID().String(),
-		Addrs:     announceAddrs(node),
-		Network:   buildNetworkStatus(node, router),
-		WebURLs:   webURLs(webPort),
-		Outbox:    outbox,
-		Received:  received,
-		Receivers: receivers,
-		Incoming:  append([]incomingEvent{}, firstIncoming(state.incoming, 12)...),
+		Name:        state.name,
+		PeerID:      node.ID().String(),
+		Addrs:       announceAddrs(node),
+		Network:     buildNetworkStatus(node, router),
+		WebURLs:     webURLs(webPort),
+		Bundles:     bundles,
+		Peers:       peers,
+		Deployments: append([]deployEvent{}, firstDeploys(state.deploys, 12)...),
 	}
 }
-func pruneReceiversLocked() {
+
+func prunePeersLocked() {
 	now := time.Now()
-	for peerID, receiver := range state.receivers {
-		ttl := receiverTTL(receiver.Source)
-		if now.Sub(receiver.SeenAt) > ttl {
-			delete(state.receivers, peerID)
+	for peerID, peerNode := range state.peers {
+		ttl := peerTTL(peerNode.Source)
+		if now.Sub(peerNode.SeenAt) > ttl {
+			delete(state.peers, peerID)
 		}
 	}
 }
 
-func receiverTTL(source string) time.Duration {
+func peerTTL(source string) time.Duration {
 	if source == "DHT" {
-		return dhtReceiverTTL
+		return dhtPeerTTL
 	}
-	return lanReceiverTTL
+	return lanPeerTTL
 }
 
-func firstIncoming(items []incomingEvent, count int) []incomingEvent {
+func firstDeploys(items []deployEvent, count int) []deployEvent {
 	if len(items) <= count {
 		return items
 	}
@@ -89,6 +86,7 @@ func buildNetworkStatus(node host.Host, router *kaddht.IpfsDHT) networkStatus {
 		HasCircuitAddr:     len(circuitAddrs) > 0,
 		CircuitAddrs:       circuitAddrs,
 		RelayConfigured:    len(staticRelays) > 0 || getenvBool("APP_RELAY_SERVICE", false),
+		DockerDeploy:       getenvBool("APP_DOCKER_DEPLOY_ENABLED", false),
 	}
 }
 

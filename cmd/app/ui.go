@@ -5,7 +5,7 @@ const appPage = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>P2P File Transfer</title>
+  <title>P2P Docker Deploy</title>
   <style>
     :root {
       color-scheme: light;
@@ -13,20 +13,18 @@ const appPage = `<!doctype html>
       background: #f5f7fb;
       color: #1d2430;
     }
-
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; }
     main { width: min(1120px, calc(100vw - 32px)); margin: 0 auto; padding: 28px 0; }
-    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 20px; }
-    h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.1; letter-spacing: 0; }
-    h2 { margin: 0 0 14px; font-size: 18px; letter-spacing: 0; }
+    header { margin-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.1; }
+    h2 { margin: 0 0 14px; font-size: 18px; }
     p { margin: 0; color: #5c6676; line-height: 1.5; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     .panel { background: #fff; border: 1px solid #dce2ec; border-radius: 8px; padding: 18px; box-shadow: 0 10px 28px rgba(27, 42, 67, 0.06); }
     .wide { grid-column: 1 / -1; }
-    .role { display: flex; gap: 8px; padding: 4px; border: 1px solid #dce2ec; border-radius: 8px; background: #fff; }
     button { min-height: 42px; border: 0; border-radius: 8px; padding: 0 14px; font: inherit; font-weight: 700; color: #243044; background: #edf1f7; cursor: pointer; }
-    button.primary, button.active { color: #fff; background: #1f6feb; }
+    button.primary { color: #fff; background: #1f6feb; }
     button.success { color: #fff; background: #16833a; }
     input[type="file"], input[type="text"] { width: 100%; min-height: 44px; border: 1px solid #c8d0dc; border-radius: 8px; padding: 10px 12px; font: inherit; background: #fbfcfe; }
     input[type="file"] { border-style: dashed; }
@@ -34,23 +32,18 @@ const appPage = `<!doctype html>
     .row > input[type="file"] { flex: 1 1 280px; }
     code { display: block; overflow-wrap: anywhere; padding: 10px; border-radius: 8px; background: #eef2f7; line-height: 1.45; color: #172033; }
     ul { list-style: none; margin: 0; padding: 0; }
-    li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ebf2; }
+    li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ebf2; }
     li:first-child { border-top: 0; }
     .meta { color: #667285; font-size: 13px; overflow-wrap: anywhere; }
     .status { min-height: 24px; margin-top: 12px; color: #1f6feb; font-weight: 700; }
-    .receiver { align-items: flex-start; }
-    .receiver button { flex: 0 0 auto; }
     .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
     .badge { display: inline-flex; align-items: center; min-height: 30px; border-radius: 8px; padding: 0 10px; background: #edf1f7; color: #243044; font-size: 13px; font-weight: 700; }
     .badge.ok { background: #e6f4ea; color: #146c2e; }
     .badge.warn { background: #fff4db; color: #855c00; }
     .address-actions { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; }
     .address-actions code { flex: 1 1 320px; }
-    .hidden { display: none; }
     @media (max-width: 760px) {
       main { width: min(100vw - 24px, 1120px); padding: 20px 0; }
-      header { display: block; }
-      .role { margin-top: 14px; }
       .grid { grid-template-columns: 1fr; }
     }
   </style>
@@ -58,18 +51,16 @@ const appPage = `<!doctype html>
 <body>
   <main>
     <header>
-      <div>
-        <h1>P2P File Transfer</h1>
-        <p>Run this same app on each computer, choose a role, then send files over LAN, relay, or DHT-discovered peers.</p>
-      </div>
-      <div class="role">
-        <button id="senderMode">Sender</button>
-        <button id="receiverMode">Receiver</button>
-      </div>
+      <h1>P2P Docker Deploy</h1>
+      <p>Each machine runs the same node. Nodes discover each other over LAN, mDNS, relay, and DHT, then push deployment bundles over libp2p.</p>
     </header>
 
     <section class="panel wide">
       <h2>This Node</h2>
+      <div class="row" style="margin-bottom:14px">
+        <input id="displayName" type="text" placeholder="node display name">
+        <button class="primary" id="saveNode">Save Name</button>
+      </div>
       <p id="nodeName"></p>
       <code id="nodeAddrs">Loading...</code>
       <div class="status" id="status"></div>
@@ -86,37 +77,40 @@ const appPage = `<!doctype html>
     </section>
 
     <section class="grid">
-      <section class="panel" id="senderPanel">
-        <h2>Sender</h2>
+      <section class="panel">
+        <h2>Deployment Bundles</h2>
         <div class="row">
           <input id="files" type="file" multiple>
-          <button class="primary" id="upload">Add Files</button>
+          <button class="primary" id="upload">Upload Bundles</button>
         </div>
-        <h2 style="margin-top:18px">Outbox</h2>
-        <ul id="outbox"></ul>
-      </section>
-
-      <section class="panel" id="receiversPanel">
-        <h2>Receivers On LAN</h2>
-        <div class="row" style="margin-bottom:14px">
-          <input id="manualAddr" type="text" placeholder="/ip4/192.168.1.20/tcp/50000/p2p/...">
-          <button class="success" id="sendManual">Send to Address</button>
+        <ul id="bundles" style="margin-top:18px"></ul>
+        <h2 style="margin-top:18px">Deploy Settings</h2>
+        <div class="row" style="margin-top:14px">
+          <input id="deployArchive" type="text" placeholder="bundle.tar.gz">
         </div>
-        <ul id="receivers"></ul>
-      </section>
-
-      <section class="panel" id="receiverPanel">
-        <h2>Receiver</h2>
-        <label for="displayName">Display name</label>
-        <input id="displayName" type="text" placeholder="Kitchen laptop">
-        <div class="status" id="receiverStatus"></div>
-        <h2 style="margin-top:18px">Received Files</h2>
-        <ul id="received"></ul>
+        <div class="row" style="margin-top:10px">
+          <input id="deployProject" type="text" placeholder="project name">
+        </div>
+        <div class="row" style="margin-top:10px">
+          <input id="deployCompose" type="text" placeholder="docker-compose.yml">
+        </div>
+        <div class="row" style="margin-top:10px">
+          <input id="deployToken" type="text" placeholder="deploy token if required">
+        </div>
       </section>
 
       <section class="panel">
-        <h2>Incoming Log</h2>
-        <ul id="incoming"></ul>
+        <h2>Discovered Nodes</h2>
+        <div class="row" style="margin-bottom:14px">
+          <input id="manualAddr" type="text" placeholder="/ip4/192.168.1.20/tcp/50000/p2p/...">
+          <button id="deployManual">Deploy To Address</button>
+        </div>
+        <ul id="peers"></ul>
+      </section>
+
+      <section class="panel wide">
+        <h2>Deployment Activity</h2>
+        <ul id="deployments"></ul>
       </section>
     </section>
   </main>
@@ -129,19 +123,16 @@ const appPage = `<!doctype html>
     const rendezvous = document.querySelector('#rendezvous')
     const circuitAddr = document.querySelector('#circuitAddr')
     const copyCircuit = document.querySelector('#copyCircuit')
-    const outbox = document.querySelector('#outbox')
-    const receivers = document.querySelector('#receivers')
-    const received = document.querySelector('#received')
-    const incoming = document.querySelector('#incoming')
+    const bundles = document.querySelector('#bundles')
+    const peers = document.querySelector('#peers')
+    const deployments = document.querySelector('#deployments')
     const filesInput = document.querySelector('#files')
     const displayName = document.querySelector('#displayName')
-    const senderMode = document.querySelector('#senderMode')
-    const receiverMode = document.querySelector('#receiverMode')
-    const senderPanel = document.querySelector('#senderPanel')
-    const receiversPanel = document.querySelector('#receiversPanel')
-    const receiverPanel = document.querySelector('#receiverPanel')
     const manualAddr = document.querySelector('#manualAddr')
-    let currentMode = 'sender'
+    const deployArchive = document.querySelector('#deployArchive')
+    const deployProject = document.querySelector('#deployProject')
+    const deployCompose = document.querySelector('#deployCompose')
+    const deployToken = document.querySelector('#deployToken')
     let bestCircuitAddr = ''
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -150,20 +141,6 @@ const appPage = `<!doctype html>
       reader.onerror = () => reject(reader.error)
       reader.readAsDataURL(file)
     })
-
-    const setMode = async (mode) => {
-      const res = await fetch('/api/mode', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode, name: displayName.value.trim() })
-      })
-      const body = await res.json()
-      if (!res.ok) {
-        status.textContent = body.error || 'Could not change mode.'
-        return
-      }
-      renderState(body)
-    }
 
     const renderListMessage = (list, text) => {
       list.innerHTML = ''
@@ -175,98 +152,72 @@ const appPage = `<!doctype html>
     }
 
     const renderState = (state) => {
-      currentMode = state.mode
-      senderMode.classList.toggle('active', state.mode === 'sender')
-      receiverMode.classList.toggle('active', state.mode === 'receiver')
-      senderPanel.classList.toggle('hidden', state.mode !== 'sender')
-      receiversPanel.classList.toggle('hidden', state.mode !== 'sender')
-      receiverPanel.classList.toggle('hidden', state.mode !== 'receiver')
       if (document.activeElement !== displayName) displayName.value = state.name || ''
-      nodeName.textContent = state.mode === 'receiver'
-        ? 'Receiver mode: visible through LAN discovery and DHT rendezvous.'
-        : 'Sender mode: choose a receiver and push your outbox.'
+      if (document.activeElement !== deployCompose && deployCompose.value === '') deployCompose.value = 'docker-compose.yml'
+      nodeName.textContent = 'This node can discover peers and, when enabled, receive remote Docker deployments.'
       nodeAddrs.textContent = state.addrs.join('\n')
       renderNetwork(state.network)
 
-      outbox.innerHTML = ''
-      if (state.outbox.length === 0) {
-        renderListMessage(outbox, 'No files in outbox.')
+      bundles.innerHTML = ''
+      if (state.bundles.length === 0) {
+        renderListMessage(bundles, 'No deployment bundles uploaded.')
       } else {
-        for (const name of state.outbox) {
+        for (const name of state.bundles) {
           const item = document.createElement('li')
           const label = document.createElement('span')
           const remove = document.createElement('button')
           label.textContent = name
           remove.textContent = 'Remove'
           remove.onclick = async () => {
-            await fetch('/api/files?name=' + encodeURIComponent(name), { method: 'DELETE' })
+            await fetch('/api/bundles?name=' + encodeURIComponent(name), { method: 'DELETE' })
             await loadState()
           }
           item.append(label, remove)
-          outbox.append(item)
+          bundles.append(item)
         }
       }
 
-      receivers.innerHTML = ''
-      if (state.receivers.length === 0) {
-        renderListMessage(receivers, 'No receivers found yet.')
+      peers.innerHTML = ''
+      if (state.peers.length === 0) {
+        renderListMessage(peers, 'No peers discovered yet.')
       } else {
-        for (const receiver of state.receivers) {
+        for (const peer of state.peers) {
           const item = document.createElement('li')
-          item.className = 'receiver'
           const info = document.createElement('div')
           const title = document.createElement('strong')
           const meta = document.createElement('div')
-          const send = document.createElement('button')
-          title.textContent = receiver.name || receiver.peerId
+          const deploy = document.createElement('button')
+          title.textContent = peer.name || peer.peerId
           meta.className = 'meta'
-          meta.textContent = (receiver.source ? receiver.source + ' - ' : '') + receiver.addr
-          send.className = 'success'
-          send.textContent = 'Send Files'
-          send.onclick = async () => {
-            status.textContent = 'Sending to ' + title.textContent + '...'
-            const res = await fetch('/api/send', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ peerId: receiver.peerId })
-            })
-            const body = await res.json()
-            status.textContent = res.ok ? 'Sent ' + body.files.length + ' file(s).' : body.error || 'Send failed.'
+          meta.textContent = (peer.source ? peer.source + ' - ' : '') + peer.addr + (peer.deployEnabled ? ' - deploy enabled' : ' - deploy disabled')
+          deploy.textContent = peer.deployEnabled ? 'Deploy Bundle' : 'Deploy Disabled'
+          deploy.disabled = !peer.deployEnabled
+          deploy.onclick = async () => {
+            await deployToTarget({ peerId: peer.peerId, label: title.textContent })
           }
           info.append(title, meta)
-          item.append(info, send)
-          receivers.append(item)
+          item.append(info, deploy)
+          peers.append(item)
         }
       }
 
-      received.innerHTML = ''
-      if (state.received.length === 0) {
-        renderListMessage(received, 'No files received yet.')
+      deployments.innerHTML = ''
+      if (state.deployments.length === 0) {
+        renderListMessage(deployments, 'No deployments yet.')
       } else {
-        for (const name of state.received) {
+        for (const event of state.deployments) {
           const item = document.createElement('li')
-          const link = document.createElement('a')
-          link.textContent = name
-          link.href = '/received/' + encodeURIComponent(name)
-          link.download = name
-          item.append(link)
-          received.append(item)
-        }
-      }
-
-      incoming.innerHTML = ''
-      if (state.incoming.length === 0) {
-        renderListMessage(incoming, 'No incoming transfers yet.')
-      } else {
-        for (const event of state.incoming) {
-          const item = document.createElement('li')
-          const label = document.createElement('span')
-          const meta = document.createElement('span')
-          label.textContent = event.files.map((file) => file.name).join(', ')
+          const wrap = document.createElement('div')
+          const title = document.createElement('strong')
+          const meta = document.createElement('div')
+          const output = document.createElement('code')
+          title.textContent = event.projectName + ' - ' + event.status
           meta.className = 'meta'
-          meta.textContent = new Date(event.at).toLocaleTimeString()
-          item.append(label, meta)
-          incoming.append(item)
+          meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
+          output.textContent = event.output || 'No command output.'
+          wrap.append(title, meta, output)
+          item.append(wrap)
+          deployments.append(item)
         }
       }
     }
@@ -284,10 +235,10 @@ const appPage = `<!doctype html>
       addBadge(network.relayConfigured ? 'Relay configured' : 'No relay configured', network.relayConfigured)
       addBadge(network.hasCircuitAddr ? 'Circuit address ready' : 'Waiting for circuit address', network.hasCircuitAddr)
       addBadge(network.dhtEnabled ? 'DHT ' + network.dhtMode : 'DHT off', network.dhtEnabled)
+      addBadge(network.dockerDeploy ? 'Docker deploy on' : 'Docker deploy off', network.dockerDeploy)
       addBadge('DHT peers ' + network.dhtPeers, network.dhtPeers > 0)
       addBadge('Connected peers ' + network.connectedPeers, network.connectedPeers > 0)
       rendezvous.textContent = 'Rendezvous: ' + network.rendezvous + ' | Static relays: ' + network.staticRelayCount + ' | Bootstrap peers: ' + network.bootstrapPeerCount
-
       bestCircuitAddr = network.circuitAddrs[0] || ''
       circuitAddr.textContent = bestCircuitAddr || 'No circuit address yet.'
       copyCircuit.disabled = bestCircuitAddr === ''
@@ -298,40 +249,70 @@ const appPage = `<!doctype html>
       renderState(await res.json())
     }
 
+    document.querySelector('#saveNode').onclick = async () => {
+      const res = await fetch('/api/node', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: displayName.value.trim() })
+      })
+      const body = await res.json()
+      status.textContent = res.ok ? 'Node name updated.' : body.error || 'Update failed.'
+      if (res.ok) renderState(body)
+    }
+
     document.querySelector('#upload').onclick = async () => {
       const selected = Array.from(filesInput.files)
       if (selected.length === 0) {
-        status.textContent = 'Choose at least one file first.'
+        status.textContent = 'Choose at least one deployment bundle first.'
         return
       }
-      status.textContent = 'Adding files...'
+      status.textContent = 'Uploading bundles...'
       const files = []
       for (const file of selected) files.push({ name: file.name, data: await fileToBase64(file) })
-      const res = await fetch('/api/files', {
+      const res = await fetch('/api/bundles', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ files })
       })
       const body = await res.json()
-      status.textContent = res.ok ? 'Outbox updated.' : body.error || 'Upload failed.'
+      status.textContent = res.ok ? 'Bundle library updated.' : body.error || 'Upload failed.'
       filesInput.value = ''
       await loadState()
     }
 
-    document.querySelector('#sendManual').onclick = async () => {
-      const addr = manualAddr.value.trim()
-      if (addr === '') {
-        status.textContent = 'Paste a receiver multiaddr first.'
+    const deployToTarget = async ({ peerId = '', addr = '', label = 'target' }) => {
+      const archiveName = deployArchive.value.trim()
+      if (archiveName === '') {
+        status.textContent = 'Fill in the deployment bundle file name first.'
         return
       }
-      status.textContent = 'Sending...'
-      const res = await fetch('/api/send', {
+      status.textContent = 'Deploying bundle to ' + label + '...'
+      const res = await fetch('/api/deploy', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ addr })
+        body: JSON.stringify({
+          peerId,
+          addr,
+          archiveName,
+          projectName: deployProject.value.trim(),
+          composeFile: deployCompose.value.trim(),
+          token: deployToken.value.trim()
+        })
       })
       const body = await res.json()
-      status.textContent = res.ok ? 'Sent ' + body.files.length + ' file(s).' : body.error || 'Send failed.'
+      status.textContent = res.ok
+        ? 'Deployment completed for ' + (body.projectName || label) + '.'
+        : (body.message || body.error || 'Deployment failed.')
+      await loadState()
+    }
+
+    document.querySelector('#deployManual').onclick = async () => {
+      const addr = manualAddr.value.trim()
+      if (addr === '') {
+        status.textContent = 'Paste a peer multiaddr first.'
+        return
+      }
+      await deployToTarget({ addr, label: 'manual address' })
     }
 
     copyCircuit.onclick = async () => {
@@ -343,11 +324,6 @@ const appPage = `<!doctype html>
       status.textContent = 'Circuit address copied.'
     }
 
-    senderMode.onclick = () => setMode('sender')
-    receiverMode.onclick = () => setMode('receiver')
-    displayName.onchange = () => {
-      if (currentMode === 'receiver') setMode('receiver')
-    }
     loadState().catch((err) => { status.textContent = err.message })
     setInterval(loadState, 2000)
   </script>

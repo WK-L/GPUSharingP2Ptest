@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	filesPushProtocol = protocol.ID("/files/push/1.0.0")
 	peerInfoProtocol  = protocol.ID("/peer/info/1.0.0")
-	outboxDir         = "./outbox"
-	receivedDir       = "./received"
-	defaultRendezvous = "/gpusharingp2ptest/files/receiver/v1"
-	lanReceiverTTL    = 8 * time.Second
-	dhtReceiverTTL    = 45 * time.Second
+	deployProtocol    = protocol.ID("/docker/deploy/1.0.0")
+	bundleDir         = "./bundles"
+	deploymentsDir    = "./deployments"
+	defaultRendezvous = "/gpusharingp2ptest/docker/deploy/node/v1"
+	lanPeerTTL        = 8 * time.Second
+	dhtPeerTTL        = 45 * time.Second
 	broadcastInterval = 2 * time.Second
 )

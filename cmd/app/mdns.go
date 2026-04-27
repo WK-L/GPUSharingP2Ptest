@@ -45,9 +45,9 @@ func (n *mdnsNotifee) HandlePeerFound(info peer.AddrInfo) {
 
 		peerInfo, err := fetchPeerInfo(ctx, n.node, info)
 		if err != nil {
-			removeReceiver(info.ID, "mDNS")
+			removePeerNode(info.ID, "mDNS")
 			return
 		}
-		upsertReceiverFromPeerInfo(peerInfo, "mDNS")
+		upsertPeerNodeFromPeerInfo(peerInfo, "mDNS")
 	}()
 }

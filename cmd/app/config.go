@@ -69,7 +69,7 @@ func webURLs(webPort string) []string {
 func hostName() string {
 	name, err := os.Hostname()
 	if err != nil || name == "" {
-		return "receiver"
+		return "node"
 	}
 	return name
 }
