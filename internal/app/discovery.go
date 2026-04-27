@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -6,16 +6,14 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"syscall"
 	"time"
 
 	host "github.com/libp2p/go-libp2p/core/host"
 	"golang.org/x/net/ipv4"
-	"golang.org/x/sys/unix"
 )
 
 func startDiscovery(ctx context.Context, node host.Host, group string, port int) {
-	listenConfig := net.ListenConfig{Control: reuseUDPPort}
+	listenConfig := discoveryListenConfig()
 	packetConn, err := listenConfig.ListenPacket(ctx, "udp4", fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Println("discovery listen error:", err)
@@ -58,6 +56,7 @@ func startDiscovery(ctx context.Context, node host.Host, group string, port int)
 			state.peers[announcement.PeerID] = peerNode{
 				PeerID:        announcement.PeerID,
 				Name:          fallback(announcement.Name, announcement.PeerID),
+				PeerType:      fallback(announcement.PeerType, "renter"),
 				Addr:          announcement.Addrs[0],
 				Addrs:         announcement.Addrs,
 				Source:        "LAN",
@@ -83,6 +82,7 @@ func startDiscovery(ctx context.Context, node host.Host, group string, port int)
 				App:           "p2ptest-lan",
 				PeerID:        node.ID().String(),
 				Name:          name,
+				PeerType:      peerType(),
 				Addrs:         announceAddrs(node),
 				WebURLs:       webURLs(getenv("APP_WEB_PORT", "3000")),
 				DeployEnabled: getenvBool("APP_DOCKER_DEPLOY_ENABLED", false),
@@ -130,22 +130,4 @@ func interfaceHasIPv4(iface net.Interface) bool {
 		}
 	}
 	return false
-}
-
-func reuseUDPPort(network string, address string, conn syscall.RawConn) error {
-	var controlErr error
-	if err := conn.Control(func(fd uintptr) {
-		controlErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
-		if controlErr != nil {
-			return
-		}
-		controlErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
-		if controlErr != nil {
-			return
-		}
-		controlErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_BROADCAST, 1)
-	}); err != nil {
-		return err
-	}
-	return controlErr
 }

@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -24,6 +24,7 @@ func newPeerInfoHandler(node host.Host) network.StreamHandler {
 		response := peerInfoResponse{
 			Name:          state.name,
 			PeerID:        node.ID().String(),
+			PeerType:      peerType(),
 			Addrs:         announceAddrs(node),
 			DeployEnabled: dockerDeployEnabled(),
 		}
@@ -52,7 +53,7 @@ func handleDeployRequest(s network.Stream) {
 		return
 	}
 
-	response := executeDeploy(payload, s.Conn().RemotePeer().String())
+	response := executeDeploy(payload)
 	if err := writeStreamJSON(s, response); err != nil {
 		log.Println("deploy response write error:", err)
 	}
@@ -85,7 +86,6 @@ func sendDeployBundle(node host.Host, req deployRequest) (deployResponse, error)
 		RequestedAt: time.Now().Format(time.RFC3339),
 		Source:      sourceNode,
 		Archive:     archive,
-		Token:       req.Token,
 	}
 
 	stream, err := newStreamToAddr(node, addr, deployProtocol)
@@ -173,6 +173,7 @@ func upsertPeerNodeFromPeerInfo(info *peerInfoResponse, source string) {
 	state.peers[info.PeerID] = peerNode{
 		PeerID:        info.PeerID,
 		Name:          fallback(info.Name, info.PeerID),
+		PeerType:      fallback(info.PeerType, "renter"),
 		Addr:          info.Addrs[0],
 		Addrs:         info.Addrs,
 		Source:        source,

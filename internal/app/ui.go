@@ -1,4 +1,4 @@
-package main
+package app
 
 const appPage = `<!doctype html>
 <html lang="en">
@@ -52,7 +52,7 @@ const appPage = `<!doctype html>
   <main>
     <header>
       <h1>P2P Docker Deploy</h1>
-      <p>Each machine runs the same node. Nodes discover each other over LAN, mDNS, relay, and DHT, then push deployment bundles over libp2p.</p>
+      <p>Each machine runs the same node. Peer types are relay, renter, and provider. Nodes discover each other over LAN, mDNS, relay, and DHT, then push deployment bundles over libp2p.</p>
     </header>
 
     <section class="panel wide">
@@ -94,9 +94,6 @@ const appPage = `<!doctype html>
         <div class="row" style="margin-top:10px">
           <input id="deployCompose" type="text" placeholder="docker-compose.yml">
         </div>
-        <div class="row" style="margin-top:10px">
-          <input id="deployToken" type="text" placeholder="deploy token if required">
-        </div>
       </section>
 
       <section class="panel">
@@ -132,7 +129,6 @@ const appPage = `<!doctype html>
     const deployArchive = document.querySelector('#deployArchive')
     const deployProject = document.querySelector('#deployProject')
     const deployCompose = document.querySelector('#deployCompose')
-    const deployToken = document.querySelector('#deployToken')
     let bestCircuitAddr = ''
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -154,7 +150,7 @@ const appPage = `<!doctype html>
     const renderState = (state) => {
       if (document.activeElement !== displayName) displayName.value = state.name || ''
       if (document.activeElement !== deployCompose && deployCompose.value === '') deployCompose.value = 'docker-compose.yml'
-      nodeName.textContent = 'This node can discover peers and, when enabled, receive remote Docker deployments.'
+      nodeName.textContent = 'This node is a ' + state.peerType + ' peer and can discover other peers over P2P for deployment.'
       nodeAddrs.textContent = state.addrs.join('\n')
       renderNetwork(state.network)
 
@@ -187,7 +183,7 @@ const appPage = `<!doctype html>
           const title = document.createElement('strong')
           const meta = document.createElement('div')
           const deploy = document.createElement('button')
-          title.textContent = peer.name || peer.peerId
+          title.textContent = (peer.name || peer.peerId) + ' [' + (peer.peerType || 'renter') + ']'
           meta.className = 'meta'
           meta.textContent = (peer.source ? peer.source + ' - ' : '') + peer.addr + (peer.deployEnabled ? ' - deploy enabled' : ' - deploy disabled')
           deploy.textContent = peer.deployEnabled ? 'Deploy Bundle' : 'Deploy Disabled'
@@ -295,8 +291,7 @@ const appPage = `<!doctype html>
           addr,
           archiveName,
           projectName: deployProject.value.trim(),
-          composeFile: deployCompose.value.trim(),
-          token: deployToken.value.trim()
+          composeFile: deployCompose.value.trim()
         })
       })
       const body = await res.json()

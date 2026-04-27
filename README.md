@@ -9,6 +9,18 @@
 - P2P Docker 遠端部署
 - Web UI 管理節點、bundle 與部署流程
 
+Peer type 只有三種，而且完全由程式自動判斷：
+
+- `relay`
+- `renter`
+- `provider`
+
+判斷規則：
+
+- `APP_RELAY_SERVICE=true` 就是 `relay`
+- 否則 `APP_DOCKER_DEPLOY_ENABLED=true` 就是 `provider`
+- 否則就是 `renter`
+
 ## 安裝
 
 需求：
@@ -17,6 +29,7 @@
 - 若要跨 NAT，建議準備一台有 public IP 的 relay/bootstrap node
 - 接收部署的節點要能執行 Docker
 - Windows 接收方需要已安裝 WSL，且 WSL 內可執行 `docker`
+- 如果指定 `APP_DOCKER_RUNTIME=runsc`，目標節點的 Docker runtime 列表中也必須真的有 `runsc`
 
 下載 Go dependencies：
 
@@ -52,27 +65,27 @@ go run ./cmd/app
    APP_DOCKER_DEPLOY_ENABLED=true
    ```
 
-2. 建議再加上保護：
-
-   ```bash
-   APP_DOCKER_ALLOWED_PEERS=12D3KooW...
-   APP_DOCKER_DEPLOY_TOKEN=replace-this-token
-   ```
-
-3. 如果要指定 gVisor：
+2. 如果要指定 gVisor，請在實際執行 Docker 的目標 peer 上設定：
 
    ```bash
    APP_DOCKER_RUNTIME=runsc
    ```
 
-4. 如果接收方是 Windows，會自動透過 `wsl` 執行 Docker。也可以指定 WSL distro：
+3. 如果接收方是 Windows，會自動透過 `wsl` 執行 Docker。也可以在實際執行 Docker 的目標 peer 上指定 WSL distro：
 
    ```bash
    APP_DOCKER_WSL_DISTRO=Ubuntu
    ```
 
-5. 在操作端 Web UI 上傳 `.zip`、`.tar.gz`、`.tgz` 或 `.tar` bundle。bundle 內要包含 `docker-compose.yml` 與必要的 app 檔案。
-6. 在 UI 選擇要部署的 bundle、project name、compose 檔路徑，再對目標節點按 `Deploy Bundle`。
+4. 在操作端 Web UI 上傳 `.zip`、`.tar.gz`、`.tgz` 或 `.tar` bundle。bundle 內要包含 `docker-compose.yml` 與必要的 app 檔案。
+5. 在 UI 選擇要部署的 bundle、project name、compose 檔路徑，再對目標節點按 `Deploy Bundle`。
+
+部署前程式會先檢查：
+
+- `docker` 是否可執行
+- Windows 上的 `wsl` 是否存在，且 WSL 內能執行 `docker`
+- 如果設定了 `APP_DOCKER_RUNTIME`，該 runtime 是否真的存在於 Docker daemon
+- compose 檔在 Windows + WSL 情境下是否真的能從 WSL 路徑看到
 
 遠端節點會把 bundle 解壓到 `deployments/`，然後執行：
 
@@ -81,6 +94,8 @@ docker compose -p <project> -f <compose-file> up -d --build
 ```
 
 若接收方是 Windows，則會改成透過 `wsl` 執行同一條命令。
+
+`APP_DOCKER_RUNTIME` 和 `APP_DOCKER_WSL_DISTRO` 都是由實際執行 Docker 的那台 peer 自己讀取本機 `.env`，不會由發起部署的節點透過 P2P 請求覆蓋。
 
 ## 跨 NAT / Relay
 
@@ -124,11 +139,9 @@ APP_BOOTSTRAP_PEERS=/ip4/203.0.113.10/tcp/4001/p2p/12D3KooW...
 - `APP_ENABLE_NAT_PORT_MAP=false`：關閉 UPnP / NAT-PMP port mapping。預設開啟
 - `APP_FORCE_PRIVATE_REACHABILITY=false`：使用 static relay 時，不強制標記自己為 private reachability
 - `APP_DOCKER_DEPLOY_ENABLED=true`：允許這台節點接收遠端 Docker 部署請求
-- `APP_DOCKER_ALLOWED_PEERS="<peerId>[,<peerId>]"`：只有白名單中的 peer 可以部署到這台機器
-- `APP_DOCKER_DEPLOY_TOKEN="<secret>"`：要求 deploy request 提供相同 token 才能執行
-- `APP_DOCKER_RUNTIME="runsc"`：部署時指定 Docker runtime
-- `APP_DOCKER_WSL_DISTRO="Ubuntu"`：接收方是 Windows 時，指定用哪個 WSL distro 執行 Docker
-- `P2PTEST_KEY_PATH`：自訂 libp2p private key 路徑
+- `APP_DOCKER_RUNTIME="runsc"`：由實際執行 Docker 的 peer 決定部署時使用的 Docker runtime
+- `APP_DOCKER_WSL_DISTRO="Ubuntu"`：由實際執行 Docker 的 Windows peer 決定用哪個 WSL distro 執行 Docker
+- `P2PTEST_KEY_PATH`：自訂 libp2p private key 路徑。未設定時預設使用 `/tmp/p2ptest.key`
 
 ## 專案結構
 
@@ -136,20 +149,25 @@ APP_BOOTSTRAP_PEERS=/ip4/203.0.113.10/tcp/4001/p2p/12D3KooW...
 .
 ├── cmd/
 │   └── app/
-│       ├── main.go
-│       ├── web.go
-│       ├── ui.go
-│       ├── p2p.go
-│       ├── docker.go
-│       ├── discovery.go
-│       ├── mdns.go
-│       ├── dht.go
-│       ├── nat.go
-│       ├── state.go
-│       ├── types.go
-│       ├── config.go
-│       ├── identity.go
-│       ├── json.go
+│       └── main.go        # program entrypoint
+├── internal/
+│   └── app/
+│       ├── run.go         # app bootstrap and wiring
+│       ├── web.go         # HTTP API and server
+│       ├── ui.go          # embedded Web UI
+│       ├── p2p.go         # libp2p stream handlers and peer RPC
+│       ├── docker.go      # remote Docker deployment
+│       ├── discovery.go   # LAN peer discovery
+│       ├── discovery_unix.go
+│       ├── discovery_windows.go
+│       ├── mdns.go        # mDNS discovery
+│       ├── dht.go         # DHT discovery
+│       ├── nat.go         # relay, NAT, and hole punching config
+│       ├── state.go       # in-memory app state
+│       ├── types.go       # request/response and state types
+│       ├── config.go      # env and helper functions
+│       ├── identity.go    # private key loading/creation
+│       ├── json.go        # JSON helpers
 │       └── constants.go
 ├── bundles/
 ├── deployments/

@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"sort"
@@ -32,6 +32,7 @@ func buildState(node host.Host, router *kaddht.IpfsDHT, webPort string) stateRes
 	return stateResponse{
 		Name:        state.name,
 		PeerID:      node.ID().String(),
+		PeerType:    peerType(),
 		Addrs:       announceAddrs(node),
 		Network:     buildNetworkStatus(node, router),
 		WebURLs:     webURLs(webPort),

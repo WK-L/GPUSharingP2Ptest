@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"bufio"
@@ -160,4 +160,14 @@ func fallback(value string, fallbackValue string) string {
 		return fallbackValue
 	}
 	return value
+}
+
+func peerType() string {
+	if getenvBool("APP_RELAY_SERVICE", false) {
+		return "relay"
+	}
+	if getenvBool("APP_DOCKER_DEPLOY_ENABLED", false) {
+		return "provider"
+	}
+	return "renter"
 }

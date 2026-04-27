@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"crypto/rand"
@@ -9,16 +9,13 @@ import (
 	crypto "github.com/libp2p/go-libp2p/core/crypto"
 )
 
+const defaultPrivateKeyPath = "/tmp/p2ptest.key"
+
 func defaultKeyPath() string {
 	if value := os.Getenv("P2PTEST_KEY_PATH"); value != "" {
 		return value
 	}
-
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return filepath.Join(".p2ptest", "node.key")
-	}
-	return filepath.Join(home, ".p2ptest", "node.key")
+	return defaultPrivateKeyPath
 }
 
 func loadOrCreatePrivateKey(path string) (crypto.PrivKey, string, bool, error) {

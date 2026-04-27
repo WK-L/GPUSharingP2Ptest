@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"archive/tar"
@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -23,10 +24,6 @@ func dockerDeployEnabled() bool {
 	return getenvBool("APP_DOCKER_DEPLOY_ENABLED", false)
 }
 
-func dockerDeployAllowedPeers() []string {
-	return splitCSV(getenv("APP_DOCKER_ALLOWED_PEERS", ""))
-}
-
 func dockerDeployRuntime() string {
 	return strings.TrimSpace(getenv("APP_DOCKER_RUNTIME", ""))
 }
@@ -35,19 +32,9 @@ func dockerWSLDistro() string {
 	return strings.TrimSpace(getenv("APP_DOCKER_WSL_DISTRO", ""))
 }
 
-func executeDeploy(payload deployPayload, remotePeerID string) deployResponse {
+func executeDeploy(payload deployPayload) deployResponse {
 	if !dockerDeployEnabled() {
 		return deployResponse{Message: "docker deploy is disabled on this node"}
-	}
-
-	allowedPeers := dockerDeployAllowedPeers()
-	if len(allowedPeers) > 0 && !containsString(allowedPeers, remotePeerID) {
-		return deployResponse{Message: "source peer is not allowed to deploy to this node"}
-	}
-
-	expectedToken := strings.TrimSpace(getenv("APP_DOCKER_DEPLOY_TOKEN", ""))
-	if expectedToken != "" && payload.Token != expectedToken {
-		return deployResponse{Message: "invalid deploy token"}
 	}
 
 	if payload.Archive.Name == "" || payload.Archive.Data == "" {
@@ -85,6 +72,10 @@ func executeDeploy(payload deployPayload, remotePeerID string) deployResponse {
 	}
 	if info.IsDir() {
 		return deployResponse{Message: "compose file path points to a directory", Directory: deployDir}
+	}
+
+	if err := checkDockerDeployPrerequisites(composePath, deployDir); err != nil {
+		return deployResponse{Message: err.Error(), Directory: deployDir}
 	}
 
 	command, err := newDockerDeployCommand(projectName, composePath, deployDir)
@@ -125,20 +116,72 @@ func executeDeploy(payload deployPayload, remotePeerID string) deployResponse {
 	}
 }
 
+func checkDockerDeployPrerequisites(composePath string, deployDir string) error {
+	runtimeName := dockerDeployRuntime()
+
+	if runtime.GOOS == "windows" {
+		if _, err := exec.LookPath("wsl"); err != nil {
+			return errors.New("wsl is required on Windows Docker execution peers but was not found")
+		}
+
+		if _, err := runDockerPlatformCommand(deployDir, runtimeName, []string{"docker", "version"}, false); err != nil {
+			return fmt.Errorf("could not run docker inside WSL: %w", err)
+		}
+
+		if runtimeName != "" {
+			output, err := runDockerPlatformCommand(deployDir, runtimeName, []string{"docker", "info", "--format", "{{json .Runtimes}}"}, false)
+			if err != nil {
+				return fmt.Errorf("could not inspect docker runtimes inside WSL: %w", err)
+			}
+			if !dockerRuntimeExists(output, runtimeName) {
+				return fmt.Errorf("docker runtime %q is not available inside WSL", runtimeName)
+			}
+		}
+
+		wslComposePath := toWSLPath(composePath)
+		if _, err := runDockerPlatformCommand(deployDir, runtimeName, []string{"test", "-f", wslComposePath}, true); err != nil {
+			return fmt.Errorf("compose file %q is not visible inside WSL", wslComposePath)
+		}
+		return nil
+	}
+
+	if _, err := exec.LookPath("docker"); err != nil {
+		return errors.New("docker was not found on this node")
+	}
+	if _, err := exec.Command("docker", "version").CombinedOutput(); err != nil {
+		return fmt.Errorf("could not run docker: %w", err)
+	}
+
+	if runtimeName != "" {
+		output, err := exec.Command("docker", "info", "--format", "{{json .Runtimes}}").CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("could not inspect docker runtimes: %w", err)
+		}
+		if !dockerRuntimeExists(output, runtimeName) {
+			return fmt.Errorf("docker runtime %q is not available on this node", runtimeName)
+		}
+	}
+
+	return nil
+}
+
 func newDockerDeployCommand(projectName string, composePath string, deployDir string) (*exec.Cmd, error) {
 	runtimeName := dockerDeployRuntime()
+	composeArgPath := composePath
 	args := []string{
 		"compose",
 		"-p",
 		projectName,
 		"-f",
-		composePath,
+		composeArgPath,
 		"up",
 		"-d",
 		"--build",
 	}
 
 	if runtime.GOOS == "windows" {
+		composeArgPath = toWSLPath(composePath)
+		args[4] = composeArgPath
 		wslArgs := make([]string, 0, len(args)+6)
 		if distro := dockerWSLDistro(); distro != "" {
 			wslArgs = append(wslArgs, "-d", distro)
@@ -172,6 +215,46 @@ func toWSLPath(path string) string {
 		return "/mnt/" + drive + rest
 	}
 	return slashed
+}
+
+func runDockerPlatformCommand(deployDir string, runtimeName string, args []string, shell bool) ([]byte, error) {
+	if runtime.GOOS == "windows" {
+		wslArgs := make([]string, 0, len(args)+6)
+		if distro := dockerWSLDistro(); distro != "" {
+			wslArgs = append(wslArgs, "-d", distro)
+		}
+		wslArgs = append(wslArgs, "--cd", toWSLPath(deployDir))
+		if shell {
+			commandLine := strings.Join(slices.Clone(args), " ")
+			if runtimeName != "" {
+				commandLine = "export DOCKER_DEFAULT_RUNTIME=" + shellEscape(runtimeName) + " && " + commandLine
+			}
+			wslArgs = append(wslArgs, "sh", "-lc", commandLine)
+		} else {
+			if runtimeName != "" {
+				wslArgs = append(wslArgs, "env", "DOCKER_DEFAULT_RUNTIME="+runtimeName)
+			}
+			wslArgs = append(wslArgs, args...)
+		}
+		return exec.Command("wsl", wslArgs...).CombinedOutput()
+	}
+
+	command := exec.Command(args[0], args[1:]...)
+	command.Dir = deployDir
+	if runtimeName != "" {
+		command.Env = append(os.Environ(), "DOCKER_DEFAULT_RUNTIME="+runtimeName)
+	}
+	return command.CombinedOutput()
+}
+
+func dockerRuntimeExists(output []byte, runtimeName string) bool {
+	text := string(output)
+	return strings.Contains(text, `"`+runtimeName+`"`) || strings.Contains(text, runtimeName+":")
+}
+
+func shellEscape(value string) string {
+	value = strings.ReplaceAll(value, `'`, `'\''`)
+	return "'" + value + "'"
 }
 
 func extractDeployArchive(archive []byte, archiveName string, destDir string) error {
@@ -343,13 +426,4 @@ func trimOutput(output string) string {
 		return output
 	}
 	return output[:deployOutputLimit] + "\n...output truncated..."
-}
-
-func containsString(items []string, needle string) bool {
-	for _, item := range items {
-		if item == needle {
-			return true
-		}
-	}
-	return false
 }

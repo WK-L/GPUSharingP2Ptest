@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"sync"
@@ -15,6 +15,7 @@ type appState struct {
 type peerNode struct {
 	PeerID        string    `json:"peerId"`
 	Name          string    `json:"name"`
+	PeerType      string    `json:"peerType"`
 	Addr          string    `json:"addr"`
 	Addrs         []string  `json:"addrs"`
 	Source        string    `json:"source"`
@@ -45,6 +46,7 @@ type discoveryAnnouncement struct {
 	App           string   `json:"app"`
 	PeerID        string   `json:"peerId"`
 	Name          string   `json:"name"`
+	PeerType      string   `json:"peerType"`
 	Addrs         []string `json:"addrs"`
 	WebURLs       []string `json:"webUrls"`
 	DeployEnabled bool     `json:"deployEnabled"`
@@ -54,6 +56,7 @@ type discoveryAnnouncement struct {
 type peerInfoResponse struct {
 	Name          string   `json:"name"`
 	PeerID        string   `json:"peerId"`
+	PeerType      string   `json:"peerType"`
 	Addrs         []string `json:"addrs"`
 	DeployEnabled bool     `json:"deployEnabled"`
 }
@@ -61,6 +64,7 @@ type peerInfoResponse struct {
 type stateResponse struct {
 	Name        string        `json:"name"`
 	PeerID      string        `json:"peerId"`
+	PeerType    string        `json:"peerType"`
 	Addrs       []string      `json:"addrs"`
 	Network     networkStatus `json:"network"`
 	WebURLs     []string      `json:"webUrls"`
@@ -98,7 +102,6 @@ type deployRequest struct {
 	ArchiveName string `json:"archiveName"`
 	ProjectName string `json:"projectName"`
 	ComposeFile string `json:"composeFile"`
-	Token       string `json:"token"`
 }
 
 type deployPayload struct {
@@ -107,7 +110,6 @@ type deployPayload struct {
 	RequestedAt string     `json:"requestedAt"`
 	Source      *peerBrief `json:"source,omitempty"`
 	Archive     bundleFile `json:"archive"`
-	Token       string     `json:"token,omitempty"`
 }
 
 type deployResponse struct {
