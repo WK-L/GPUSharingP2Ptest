@@ -81,11 +81,12 @@ func sendDeployBundle(node host.Host, req deployRequest) (deployResponse, error)
 	state.mu.Unlock()
 
 	payload := deployPayload{
-		ProjectName: req.ProjectName,
-		ComposeFile: req.ComposeFile,
-		RequestedAt: time.Now().Format(time.RFC3339),
-		Source:      sourceNode,
-		Archive:     archive,
+		ProjectName:   req.ProjectName,
+		ComposeFile:   req.ComposeFile,
+		ArtifactPaths: splitCSV(req.ArtifactPaths),
+		RequestedAt:   time.Now().Format(time.RFC3339),
+		Source:        sourceNode,
+		Archive:       archive,
 	}
 
 	stream, err := newStreamToAddr(node, addr, deployProtocol)
@@ -101,7 +102,7 @@ func sendDeployBundle(node host.Host, req deployRequest) (deployResponse, error)
 		return deployResponse{}, err
 	}
 
-	responseBytes, err := io.ReadAll(io.LimitReader(stream, 1024*1024))
+	responseBytes, err := io.ReadAll(io.LimitReader(stream, 32*1024*1024))
 	if err != nil {
 		return deployResponse{}, err
 	}
@@ -110,6 +111,11 @@ func sendDeployBundle(node host.Host, req deployRequest) (deployResponse, error)
 	if err := json.Unmarshal(responseBytes, &response); err != nil {
 		return deployResponse{}, err
 	}
+	savedArtifacts, err := saveReturnedArtifacts(response.ProjectName, response.Artifacts)
+	if err != nil {
+		return deployResponse{}, err
+	}
+	recordDeployResult(response, payload, savedArtifacts)
 	if !response.OK {
 		if response.Message == "" {
 			response.Message = "deployment failed"
@@ -117,6 +123,30 @@ func sendDeployBundle(node host.Host, req deployRequest) (deployResponse, error)
 		return response, errors.New(response.Message)
 	}
 	return response, nil
+}
+
+func recordDeployResult(response deployResponse, payload deployPayload, savedArtifacts []string) {
+	status := "success"
+	if !response.OK {
+		status = "failed"
+	}
+
+	event := deployEvent{
+		At:          time.Now().Format(time.RFC3339),
+		Source:      payload.Source,
+		ProjectName: fallback(response.ProjectName, payload.ProjectName),
+		ArchiveName: payload.Archive.Name,
+		Status:      status,
+		Command:     response.Command,
+		Output:      response.Output,
+		Logs:        response.Logs,
+		Artifacts:   savedArtifacts,
+	}
+
+	state.mu.Lock()
+	state.deploys = append([]deployEvent{event}, state.deploys...)
+	state.deploys = firstDeploys(state.deploys, 20)
+	state.mu.Unlock()
 }
 
 func newStreamToAddr(node host.Host, addr string, proto protocol.ID) (network.Stream, error) {

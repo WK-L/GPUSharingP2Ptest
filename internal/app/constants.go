@@ -11,6 +11,7 @@ const (
 	deployProtocol    = protocol.ID("/docker/deploy/1.0.0")
 	bundleDir         = "./bundles"
 	deploymentsDir    = "./deployments"
+	artifactsDir      = "./artifacts"
 	defaultRendezvous = "/gpusharingp2ptest/docker/deploy/node/v1"
 	lanPeerTTL        = 8 * time.Second
 	dhtPeerTTL        = 45 * time.Second

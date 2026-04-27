@@ -30,6 +30,7 @@ type peerBrief struct {
 
 type bundleFile struct {
 	Name string `json:"name"`
+	Path string `json:"path,omitempty"`
 	Data string `json:"data,omitempty"`
 }
 
@@ -39,7 +40,10 @@ type deployEvent struct {
 	ProjectName string     `json:"projectName"`
 	ArchiveName string     `json:"archiveName"`
 	Status      string     `json:"status"`
+	Command     string     `json:"command,omitempty"`
 	Output      string     `json:"output,omitempty"`
+	Logs        string     `json:"logs,omitempty"`
+	Artifacts   []string   `json:"artifacts,omitempty"`
 }
 
 type discoveryAnnouncement struct {
@@ -69,6 +73,7 @@ type stateResponse struct {
 	Network     networkStatus `json:"network"`
 	WebURLs     []string      `json:"webUrls"`
 	Bundles     []string      `json:"bundles"`
+	Artifacts   []string      `json:"artifacts"`
 	Peers       []peerNode    `json:"peers"`
 	Deployments []deployEvent `json:"deployments"`
 }
@@ -97,25 +102,30 @@ type bundlesRequest struct {
 }
 
 type deployRequest struct {
-	PeerID      string `json:"peerId"`
-	Addr        string `json:"addr"`
-	ArchiveName string `json:"archiveName"`
-	ProjectName string `json:"projectName"`
-	ComposeFile string `json:"composeFile"`
+	PeerID        string `json:"peerId"`
+	Addr          string `json:"addr"`
+	ArchiveName   string `json:"archiveName"`
+	ProjectName   string `json:"projectName"`
+	ComposeFile   string `json:"composeFile"`
+	ArtifactPaths string `json:"artifactPaths"`
 }
 
 type deployPayload struct {
-	ProjectName string     `json:"projectName"`
-	ComposeFile string     `json:"composeFile"`
-	RequestedAt string     `json:"requestedAt"`
-	Source      *peerBrief `json:"source,omitempty"`
-	Archive     bundleFile `json:"archive"`
+	ProjectName   string     `json:"projectName"`
+	ComposeFile   string     `json:"composeFile"`
+	ArtifactPaths []string   `json:"artifactPaths,omitempty"`
+	RequestedAt   string     `json:"requestedAt"`
+	Source        *peerBrief `json:"source,omitempty"`
+	Archive       bundleFile `json:"archive"`
 }
 
 type deployResponse struct {
-	OK          bool   `json:"ok"`
-	Message     string `json:"message"`
-	Output      string `json:"output,omitempty"`
-	ProjectName string `json:"projectName,omitempty"`
-	Directory   string `json:"directory,omitempty"`
+	OK          bool         `json:"ok"`
+	Message     string       `json:"message"`
+	Command     string       `json:"command,omitempty"`
+	Output      string       `json:"output,omitempty"`
+	Logs        string       `json:"logs,omitempty"`
+	Artifacts   []bundleFile `json:"artifacts,omitempty"`
+	ProjectName string       `json:"projectName,omitempty"`
+	Directory   string       `json:"directory,omitempty"`
 }

@@ -16,6 +16,7 @@ var state = &appState{
 
 func buildState(node host.Host, router *kaddht.IpfsDHT, webPort string) stateResponse {
 	bundles, _ := listFiles(bundleDir)
+	artifacts, _ := listFilesRecursive(artifactsDir)
 
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -37,6 +38,7 @@ func buildState(node host.Host, router *kaddht.IpfsDHT, webPort string) stateRes
 		Network:     buildNetworkStatus(node, router),
 		WebURLs:     webURLs(webPort),
 		Bundles:     bundles,
+		Artifacts:   artifacts,
 		Peers:       peers,
 		Deployments: append([]deployEvent{}, firstDeploys(state.deploys, 12)...),
 	}

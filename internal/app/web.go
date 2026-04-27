@@ -93,6 +93,16 @@ func startWebServer(node host.Host, router *kaddht.IpfsDHT, webHost string, webP
 			return
 		}
 
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/artifacts/") {
+			relPath, err := safeRelativePath(strings.TrimPrefix(r.URL.Path, "/artifacts/"), "")
+			if err != nil {
+				sendError(w, err)
+				return
+			}
+			http.ServeFile(w, r, filepath.Join(artifactsDir, filepath.FromSlash(relPath)))
+			return
+		}
+
 		sendJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 	})
 

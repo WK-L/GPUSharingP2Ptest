@@ -94,6 +94,9 @@ const appPage = `<!doctype html>
         <div class="row" style="margin-top:10px">
           <input id="deployCompose" type="text" placeholder="docker-compose.yml">
         </div>
+        <div class="row" style="margin-top:10px">
+          <input id="artifactPaths" type="text" placeholder="artifact paths, comma-separated">
+        </div>
       </section>
 
       <section class="panel">
@@ -109,6 +112,11 @@ const appPage = `<!doctype html>
         <h2>Deployment Activity</h2>
         <ul id="deployments"></ul>
       </section>
+
+      <section class="panel wide">
+        <h2>Returned Artifacts</h2>
+        <ul id="artifacts"></ul>
+      </section>
     </section>
   </main>
 
@@ -123,12 +131,14 @@ const appPage = `<!doctype html>
     const bundles = document.querySelector('#bundles')
     const peers = document.querySelector('#peers')
     const deployments = document.querySelector('#deployments')
+    const artifacts = document.querySelector('#artifacts')
     const filesInput = document.querySelector('#files')
     const displayName = document.querySelector('#displayName')
     const manualAddr = document.querySelector('#manualAddr')
     const deployArchive = document.querySelector('#deployArchive')
     const deployProject = document.querySelector('#deployProject')
     const deployCompose = document.querySelector('#deployCompose')
+    const artifactPaths = document.querySelector('#artifactPaths')
     let bestCircuitAddr = ''
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -206,14 +216,36 @@ const appPage = `<!doctype html>
           const wrap = document.createElement('div')
           const title = document.createElement('strong')
           const meta = document.createElement('div')
+          const command = document.createElement('code')
           const output = document.createElement('code')
+          const logs = document.createElement('code')
+          const artifactList = document.createElement('div')
           title.textContent = event.projectName + ' - ' + event.status
           meta.className = 'meta'
           meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
+          command.textContent = event.command || 'No command recorded.'
           output.textContent = event.output || 'No command output.'
-          wrap.append(title, meta, output)
+          logs.textContent = event.logs || 'No compose logs.'
+          artifactList.className = 'meta'
+          artifactList.textContent = event.artifacts?.length ? 'Artifacts: ' + event.artifacts.join(', ') : 'Artifacts: none'
+          wrap.append(title, meta, command, output, logs, artifactList)
           item.append(wrap)
           deployments.append(item)
+        }
+      }
+
+      artifacts.innerHTML = ''
+      if (state.artifacts.length === 0) {
+        renderListMessage(artifacts, 'No returned artifacts yet.')
+      } else {
+        for (const path of state.artifacts) {
+          const item = document.createElement('li')
+          const link = document.createElement('a')
+          link.textContent = path
+          link.href = '/artifacts/' + path.split('/').map(encodeURIComponent).join('/')
+          link.download = path.split('/').at(-1)
+          item.append(link)
+          artifacts.append(item)
         }
       }
     }
@@ -291,7 +323,8 @@ const appPage = `<!doctype html>
           addr,
           archiveName,
           projectName: deployProject.value.trim(),
-          composeFile: deployCompose.value.trim()
+          composeFile: deployCompose.value.trim(),
+          artifactPaths: artifactPaths.value.trim()
         })
       })
       const body = await res.json()

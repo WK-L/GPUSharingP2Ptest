@@ -19,6 +19,8 @@ import (
 )
 
 const deployOutputLimit = 12000
+const deployLogsLimit = 24000
+const deployArtifactReturnLimit = 16 * 1024 * 1024
 
 func dockerDeployEnabled() bool {
 	return getenvBool("APP_DOCKER_DEPLOY_ENABLED", false)
@@ -86,12 +88,19 @@ func executeDeploy(payload deployPayload) deployResponse {
 	if err != nil {
 		return deployResponse{Message: err.Error(), Directory: deployDir}
 	}
+	commandLine := renderCommand(command)
 	output, err := command.CombinedOutput()
 	message := "deployment completed"
 	ok := true
 	if err != nil {
 		ok = false
 		message = err.Error()
+	}
+	logsOutput := collectComposeLogs(projectName, composePath, deployDir)
+	artifacts, artifactErr := collectArtifacts(deployDir, payload.ArtifactPaths)
+	if artifactErr != nil {
+		ok = false
+		message = artifactErr.Error()
 	}
 
 	event := deployEvent{
@@ -100,7 +109,9 @@ func executeDeploy(payload deployPayload) deployResponse {
 		ProjectName: projectName,
 		ArchiveName: payload.Archive.Name,
 		Status:      "success",
+		Command:     commandLine,
 		Output:      trimOutput(string(output)),
+		Logs:        trimLogs(logsOutput),
 	}
 	if !ok {
 		event.Status = "failed"
@@ -114,7 +125,10 @@ func executeDeploy(payload deployPayload) deployResponse {
 	return deployResponse{
 		OK:          ok,
 		Message:     message,
+		Command:     commandLine,
 		Output:      trimOutput(string(output)),
+		Logs:        trimLogs(logsOutput),
+		Artifacts:   artifacts,
 		ProjectName: projectName,
 		Directory:   deployDir,
 	}
@@ -211,6 +225,37 @@ func newDockerDeployCommand(projectName string, composePath string, deployDir st
 	return command, nil
 }
 
+func newDockerLogsCommand(projectName string, composePath string, deployDir string) *exec.Cmd {
+	args := []string{
+		"compose",
+		"-p",
+		projectName,
+		"-f",
+		composePath,
+		"logs",
+		"--no-color",
+		"--tail",
+		"200",
+	}
+
+	if runtime.GOOS == "windows" {
+		args[4] = toWSLPath(composePath)
+		wslArgs := make([]string, 0, len(args)+6)
+		if distro := dockerWSLDistro(); distro != "" {
+			wslArgs = append(wslArgs, "-d", distro)
+		}
+		wslArgs = append(wslArgs, "--cd", toWSLPath(deployDir), "docker")
+		wslArgs = append(wslArgs, args...)
+		command := exec.Command("wsl", wslArgs...)
+		command.Dir = deployDir
+		return command
+	}
+
+	command := exec.Command("docker", args...)
+	command.Dir = deployDir
+	return command
+}
+
 func toWSLPath(path string) string {
 	slashed := filepath.ToSlash(path)
 	if len(slashed) >= 2 && slashed[1] == ':' {
@@ -275,6 +320,96 @@ func formatCommandError(err error, output []byte) error {
 		return err
 	}
 	return fmt.Errorf("%w: %s", err, text)
+}
+
+func renderCommand(command *exec.Cmd) string {
+	if command == nil {
+		return ""
+	}
+	return strings.Join(append([]string{command.Path}, command.Args[1:]...), " ")
+}
+
+func collectComposeLogs(projectName string, composePath string, deployDir string) string {
+	command := newDockerLogsCommand(projectName, composePath, deployDir)
+	if command == nil {
+		return ""
+	}
+	output, err := command.CombinedOutput()
+	if err != nil && len(output) == 0 {
+		return err.Error()
+	}
+	return string(output)
+}
+
+func trimLogs(output string) string {
+	output = strings.TrimSpace(output)
+	if len(output) <= deployLogsLimit {
+		return output
+	}
+	return output[:deployLogsLimit] + "\n...logs truncated..."
+}
+
+func collectArtifacts(deployDir string, paths []string) ([]bundleFile, error) {
+	if len(paths) == 0 {
+		return nil, nil
+	}
+
+	files := make([]bundleFile, 0)
+	totalBytes := 0
+	for _, rawPath := range paths {
+		relPath, err := safeRelativePath(rawPath, "")
+		if err != nil {
+			return nil, err
+		}
+		absPath := filepath.Join(deployDir, filepath.FromSlash(relPath))
+		info, err := os.Stat(absPath)
+		if err != nil {
+			return nil, fmt.Errorf("artifact path %q not found", relPath)
+		}
+
+		if info.IsDir() {
+			err = filepath.WalkDir(absPath, func(path string, entry os.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				if entry.IsDir() {
+					return nil
+				}
+				return appendArtifactFile(deployDir, path, &files, &totalBytes)
+			})
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+
+		if err := appendArtifactFile(deployDir, absPath, &files, &totalBytes); err != nil {
+			return nil, err
+		}
+	}
+
+	return files, nil
+}
+
+func appendArtifactFile(deployDir string, absPath string, files *[]bundleFile, totalBytes *int) error {
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return err
+	}
+	*totalBytes += len(data)
+	if *totalBytes > deployArtifactReturnLimit {
+		return fmt.Errorf("returned artifacts exceed %d bytes", deployArtifactReturnLimit)
+	}
+	relPath, err := filepath.Rel(deployDir, absPath)
+	if err != nil {
+		return err
+	}
+	*files = append(*files, bundleFile{
+		Name: filepath.Base(absPath),
+		Path: filepath.ToSlash(relPath),
+		Data: base64.StdEncoding.EncodeToString(data),
+	})
+	return nil
 }
 
 func extractDeployArchive(archive []byte, archiveName string, destDir string) error {
