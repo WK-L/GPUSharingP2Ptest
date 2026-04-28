@@ -211,10 +211,10 @@ func checkDockerDeployPrerequisites(composePath string, deployDir string) error 
 
 func newDockerDeployCommand(projectName string, files dockerComposeFiles, deployDir string) (*exec.Cmd, error) {
 	runtimeName := dockerDeployRuntime()
-	args := dockerComposeCommandArgs(projectName, files, "up", "-d", "--build")
+	args := dockerComposeCommandArgs(projectName, files, "up", "--build", "--abort-on-container-exit")
 
 	if runtime.GOOS == "windows" {
-		args = dockerComposeWSLArgs(projectName, files, "up", "-d", "--build")
+		args = dockerComposeWSLArgs(projectName, files, "up", "--build", "--abort-on-container-exit")
 		wslArgs := make([]string, 0, len(args)+6)
 		if distro := dockerWSLDistro(); distro != "" {
 			wslArgs = append(wslArgs, "-d", distro)
