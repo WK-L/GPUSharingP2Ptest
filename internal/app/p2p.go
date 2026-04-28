@@ -53,9 +53,16 @@ func handleDeployRequest(s network.Stream) {
 		return
 	}
 
-	response := executeDeploy(payload)
-	if err := writeStreamJSON(s, response); err != nil {
+	result := executeDeploy(payload)
+	if err := writeStreamJSON(s, result.response); err != nil {
 		log.Println("deploy response write error:", err)
+		return
+	}
+
+	if cleanupOutput, cleanupErr := cleanupDockerDeployment(result.projectName, result.composeFiles, result.deployDir); cleanupErr != nil {
+		log.Println("deploy cleanup error:", cleanupErr)
+	} else if cleanupOutput != "" {
+		log.Println("deploy cleanup:", cleanupOutput)
 	}
 }
 

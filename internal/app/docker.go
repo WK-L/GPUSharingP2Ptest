@@ -29,6 +29,13 @@ type dockerComposeFiles struct {
 	overridePath string
 }
 
+type deployExecutionResult struct {
+	response     deployResponse
+	composeFiles dockerComposeFiles
+	deployDir    string
+	projectName  string
+}
+
 func dockerDeployEnabled() bool {
 	return getenvBool("APP_DOCKER_DEPLOY_ENABLED", false)
 }
@@ -41,65 +48,65 @@ func dockerWSLDistro() string {
 	return strings.TrimSpace(getenv("APP_DOCKER_WSL_DISTRO", ""))
 }
 
-func executeDeploy(payload deployPayload) deployResponse {
+func executeDeploy(payload deployPayload) deployExecutionResult {
 	if !dockerDeployEnabled() {
-		return deployResponse{Message: "docker deploy is disabled on this node"}
+		return deployExecutionResult{response: deployResponse{Message: "docker deploy is disabled on this node"}}
 	}
 
 	if payload.Archive.Name == "" || payload.Archive.Data == "" {
-		return deployResponse{Message: "deploy archive is required"}
+		return deployExecutionResult{response: deployResponse{Message: "deploy archive is required"}}
 	}
 
 	projectName := safeProjectName(payload.ProjectName, payload.Archive.Name)
 	defaultComposeFile := filepath.ToSlash(filepath.Join(defaultBundleRootName(payload.Archive.Name), "docker-compose.yml"))
 	composeFile, err := safeRelativePath(payload.ComposeFile, defaultComposeFile)
 	if err != nil {
-		return deployResponse{Message: err.Error()}
+		return deployExecutionResult{response: deployResponse{Message: err.Error()}}
 	}
 
 	archiveBytes, err := base64.StdEncoding.DecodeString(payload.Archive.Data)
 	if err != nil {
-		return deployResponse{Message: "could not decode deploy archive"}
+		return deployExecutionResult{response: deployResponse{Message: "could not decode deploy archive"}}
 	}
 
 	if err := os.MkdirAll(deploymentsDir, 0755); err != nil {
-		return deployResponse{Message: err.Error()}
+		return deployExecutionResult{response: deployResponse{Message: err.Error()}}
 	}
 
 	deployDir, err := os.MkdirTemp(deploymentsDir, projectName+"-")
 	if err != nil {
-		return deployResponse{Message: err.Error()}
+		return deployExecutionResult{response: deployResponse{Message: err.Error()}}
 	}
 	deployDir, err = filepath.Abs(deployDir)
 	if err != nil {
-		return deployResponse{Message: err.Error()}
+		return deployExecutionResult{response: deployResponse{Message: err.Error()}}
 	}
 
 	if err := extractDeployArchive(archiveBytes, payload.Archive.Name, deployDir); err != nil {
-		return deployResponse{Message: err.Error(), Directory: deployDir}
+		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
 	}
 
 	composePath := filepath.Join(deployDir, filepath.FromSlash(composeFile))
 	info, err := os.Stat(composePath)
 	if err != nil {
-		return deployResponse{Message: "compose file not found in bundle", Directory: deployDir}
+		return deployExecutionResult{response: deployResponse{Message: "compose file not found in bundle", Directory: deployDir}}
 	}
 	if info.IsDir() {
-		return deployResponse{Message: "compose file path points to a directory", Directory: deployDir}
+		return deployExecutionResult{response: deployResponse{Message: "compose file path points to a directory", Directory: deployDir}}
 	}
 
 	if err := checkDockerDeployPrerequisites(composePath, deployDir); err != nil {
-		return deployResponse{Message: err.Error(), Directory: deployDir}
+		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
 	}
 
 	composeFiles, err := prepareDockerComposeFiles(composePath, deployDir)
 	if err != nil {
-		return deployResponse{Message: err.Error(), Directory: deployDir}
+		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
 	}
 
 	command, err := newDockerDeployCommand(projectName, composeFiles, deployDir)
 	if err != nil {
-		return deployResponse{Message: err.Error(), Directory: deployDir}
+		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
 	}
 	commandLine := renderCommand(command)
 	output, err := command.CombinedOutput()
@@ -115,11 +122,6 @@ func executeDeploy(payload deployPayload) deployResponse {
 		ok = false
 		message = artifactErr.Error()
 	}
-	cleanupOutput, cleanupErr := cleanupDockerDeployment(projectName, composeFiles, deployDir)
-	if cleanupErr != nil {
-		ok = false
-		message = cleanupErr.Error()
-	}
 
 	event := deployEvent{
 		At:          time.Now().Format(time.RFC3339),
@@ -128,7 +130,7 @@ func executeDeploy(payload deployPayload) deployResponse {
 		ArchiveName: payload.Archive.Name,
 		Status:      "success",
 		Command:     commandLine,
-		Output:      trimOutput(joinCommandOutputs(string(output), cleanupOutput)),
+		Output:      trimOutput(string(output)),
 		Logs:        trimLogs(logsOutput),
 	}
 	if !ok {
@@ -140,15 +142,20 @@ func executeDeploy(payload deployPayload) deployResponse {
 	state.deploys = firstDeploys(state.deploys, 20)
 	state.mu.Unlock()
 
-	return deployResponse{
-		OK:          ok,
-		Message:     message,
-		Command:     commandLine,
-		Output:      trimOutput(joinCommandOutputs(string(output), cleanupOutput)),
-		Logs:        trimLogs(logsOutput),
-		Artifacts:   artifacts,
-		ProjectName: projectName,
-		Directory:   deployDir,
+	return deployExecutionResult{
+		response: deployResponse{
+			OK:          ok,
+			Message:     message,
+			Command:     commandLine,
+			Output:      trimOutput(string(output)),
+			Logs:        trimLogs(logsOutput),
+			Artifacts:   artifacts,
+			ProjectName: projectName,
+			Directory:   deployDir,
+		},
+		composeFiles: composeFiles,
+		deployDir:    deployDir,
+		projectName:  projectName,
 	}
 }
 
@@ -384,6 +391,10 @@ func trimLogs(output string) string {
 }
 
 func cleanupDockerDeployment(projectName string, files dockerComposeFiles, deployDir string) (string, error) {
+	if strings.TrimSpace(projectName) == "" || strings.TrimSpace(deployDir) == "" || strings.TrimSpace(files.basePath) == "" {
+		return "", nil
+	}
+
 	command := newDockerCleanupCommand(projectName, files, deployDir)
 	output, commandErr := command.CombinedOutput()
 	removeErr := os.RemoveAll(deployDir)
