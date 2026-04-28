@@ -68,6 +68,34 @@ func firstDeploys(items []deployEvent, count int) []deployEvent {
 	return items[:count]
 }
 
+func upsertDeployEvent(event deployEvent) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	for i, existing := range state.deploys {
+		if event.Key != "" && existing.Key == event.Key {
+			state.deploys[i] = event
+			return
+		}
+	}
+
+	state.deploys = append([]deployEvent{event}, state.deploys...)
+	state.deploys = firstDeploys(state.deploys, 20)
+}
+
+func deployEventKey(payload deployPayload) string {
+	sourcePeerID := ""
+	if payload.Source != nil {
+		sourcePeerID = payload.Source.PeerID
+	}
+	return strings.Join([]string{
+		payload.RequestedAt,
+		sourcePeerID,
+		payload.Archive.Name,
+		payload.ProjectName,
+	}, "|")
+}
+
 func buildNetworkStatus(node host.Host, router *kaddht.IpfsDHT) networkStatus {
 	circuitAddrs := circuitAddresses(announceAddrs(node))
 	dhtPeers := 0

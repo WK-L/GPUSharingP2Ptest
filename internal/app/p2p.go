@@ -53,6 +53,22 @@ func handleDeployRequest(s network.Stream) {
 		return
 	}
 
+	projectName := safeProjectName(payload.ProjectName, payload.Archive.Name)
+	sourceName := "unknown source"
+	if payload.Source != nil {
+		sourceName = fallback(payload.Source.Name, payload.Source.PeerID)
+	}
+	log.Printf("deploy request received from %s for archive %s as project %s\n", sourceName, payload.Archive.Name, projectName)
+	upsertDeployEvent(deployEvent{
+		Key:         deployEventKey(payload),
+		At:          time.Now().Format(time.RFC3339),
+		Source:      payload.Source,
+		ProjectName: projectName,
+		ArchiveName: payload.Archive.Name,
+		Status:      "received",
+		Output:      "Provider received deployment request and is preparing execution.",
+	})
+
 	result := executeDeploy(payload)
 	if err := writeStreamJSON(s, result.response); err != nil {
 		log.Println("deploy response write error:", err)

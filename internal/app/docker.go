@@ -49,65 +49,85 @@ func dockerWSLDistro() string {
 }
 
 func executeDeploy(payload deployPayload) deployExecutionResult {
+	eventKey := deployEventKey(payload)
+	finalizeEvent := func(projectName string, archiveName string, status string, output string, logs string, command string, artifacts []string) {
+		upsertDeployEvent(deployEvent{
+			Key:         eventKey,
+			At:          time.Now().Format(time.RFC3339),
+			Source:      payload.Source,
+			ProjectName: projectName,
+			ArchiveName: archiveName,
+			Status:      status,
+			Command:     command,
+			Output:      output,
+			Logs:        logs,
+			Artifacts:   artifacts,
+		})
+	}
+	fail := func(projectName string, archiveName string, deployDir string, message string) deployExecutionResult {
+		finalizeEvent(projectName, archiveName, "failed", message, "", "", nil)
+		return deployExecutionResult{response: deployResponse{Message: message, Directory: deployDir, ProjectName: projectName}}
+	}
+
 	if !dockerDeployEnabled() {
-		return deployExecutionResult{response: deployResponse{Message: "docker deploy is disabled on this node"}}
+		return fail("", payload.Archive.Name, "", "docker deploy is disabled on this node")
 	}
 
 	if payload.Archive.Name == "" || payload.Archive.Data == "" {
-		return deployExecutionResult{response: deployResponse{Message: "deploy archive is required"}}
+		return fail("", payload.Archive.Name, "", "deploy archive is required")
 	}
 
 	projectName := safeProjectName(payload.ProjectName, payload.Archive.Name)
 	defaultComposeFile := filepath.ToSlash(filepath.Join(defaultBundleRootName(payload.Archive.Name), "docker-compose.yml"))
 	composeFile, err := safeRelativePath(payload.ComposeFile, defaultComposeFile)
 	if err != nil {
-		return deployExecutionResult{response: deployResponse{Message: err.Error()}}
+		return fail(projectName, payload.Archive.Name, "", err.Error())
 	}
 
 	archiveBytes, err := base64.StdEncoding.DecodeString(payload.Archive.Data)
 	if err != nil {
-		return deployExecutionResult{response: deployResponse{Message: "could not decode deploy archive"}}
+		return fail(projectName, payload.Archive.Name, "", "could not decode deploy archive")
 	}
 
 	if err := os.MkdirAll(deploymentsDir, 0755); err != nil {
-		return deployExecutionResult{response: deployResponse{Message: err.Error()}}
+		return fail(projectName, payload.Archive.Name, "", err.Error())
 	}
 
 	deployDir, err := os.MkdirTemp(deploymentsDir, projectName+"-")
 	if err != nil {
-		return deployExecutionResult{response: deployResponse{Message: err.Error()}}
+		return fail(projectName, payload.Archive.Name, "", err.Error())
 	}
 	deployDir, err = filepath.Abs(deployDir)
 	if err != nil {
-		return deployExecutionResult{response: deployResponse{Message: err.Error()}}
+		return fail(projectName, payload.Archive.Name, "", err.Error())
 	}
 
 	if err := extractDeployArchive(archiveBytes, payload.Archive.Name, deployDir); err != nil {
-		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
+		return fail(projectName, payload.Archive.Name, deployDir, err.Error())
 	}
 
 	bundleRoot := filepath.Join(deployDir, filepath.FromSlash(defaultBundleRootName(payload.Archive.Name)))
 	composePath := filepath.Join(deployDir, filepath.FromSlash(composeFile))
 	info, err := os.Stat(composePath)
 	if err != nil {
-		return deployExecutionResult{response: deployResponse{Message: "compose file not found in bundle", Directory: deployDir}}
+		return fail(projectName, payload.Archive.Name, deployDir, "compose file not found in bundle")
 	}
 	if info.IsDir() {
-		return deployExecutionResult{response: deployResponse{Message: "compose file path points to a directory", Directory: deployDir}}
+		return fail(projectName, payload.Archive.Name, deployDir, "compose file path points to a directory")
 	}
 
 	if err := checkDockerDeployPrerequisites(composePath, deployDir); err != nil {
-		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
+		return fail(projectName, payload.Archive.Name, deployDir, err.Error())
 	}
 
 	composeFiles, err := prepareDockerComposeFiles(composePath, deployDir)
 	if err != nil {
-		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
+		return fail(projectName, payload.Archive.Name, deployDir, err.Error())
 	}
 
 	command, err := newDockerDeployCommand(projectName, composeFiles, deployDir)
 	if err != nil {
-		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
+		return fail(projectName, payload.Archive.Name, deployDir, err.Error())
 	}
 	commandLine := renderCommand(command)
 	output, err := command.CombinedOutput()
@@ -124,24 +144,11 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 		message = artifactErr.Error()
 	}
 
-	event := deployEvent{
-		At:          time.Now().Format(time.RFC3339),
-		Source:      payload.Source,
-		ProjectName: projectName,
-		ArchiveName: payload.Archive.Name,
-		Status:      "success",
-		Command:     commandLine,
-		Output:      trimOutput(string(output)),
-		Logs:        trimLogs(logsOutput),
-	}
+	status := "success"
 	if !ok {
-		event.Status = "failed"
+		status = "failed"
 	}
-
-	state.mu.Lock()
-	state.deploys = append([]deployEvent{event}, state.deploys...)
-	state.deploys = firstDeploys(state.deploys, 20)
-	state.mu.Unlock()
+	finalizeEvent(projectName, payload.Archive.Name, status, trimOutput(string(output)), trimLogs(logsOutput), commandLine, nil)
 
 	return deployExecutionResult{
 		response: deployResponse{
