@@ -86,6 +86,7 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 		return deployExecutionResult{response: deployResponse{Message: err.Error(), Directory: deployDir}}
 	}
 
+	bundleRoot := filepath.Join(deployDir, filepath.FromSlash(defaultBundleRootName(payload.Archive.Name)))
 	composePath := filepath.Join(deployDir, filepath.FromSlash(composeFile))
 	info, err := os.Stat(composePath)
 	if err != nil {
@@ -117,7 +118,7 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 		message = err.Error()
 	}
 	logsOutput := collectComposeLogs(projectName, composeFiles, deployDir)
-	artifacts, artifactErr := collectArtifacts(deployDir, payload.ArtifactPaths)
+	artifacts, artifactErr := collectArtifacts(bundleRoot, payload.ArtifactPaths)
 	if artifactErr != nil {
 		ok = false
 		message = artifactErr.Error()
@@ -243,6 +244,7 @@ func newDockerLogsCommand(projectName string, files dockerComposeFiles, deployDi
 	args := dockerComposeCommandArgs(projectName, files, "logs", "--no-color", "--tail", "200")
 
 	if runtime.GOOS == "windows" {
+		args = dockerComposeWSLArgs(projectName, files, "logs", "--no-color", "--tail", "200")
 		wslArgs := make([]string, 0, len(args)+6)
 		if distro := dockerWSLDistro(); distro != "" {
 			wslArgs = append(wslArgs, "-d", distro)
@@ -506,7 +508,7 @@ func listComposeServiceNames(composePath string) ([]string, error) {
 	return names, nil
 }
 
-func collectArtifacts(deployDir string, paths []string) ([]bundleFile, error) {
+func collectArtifacts(bundleRoot string, paths []string) ([]bundleFile, error) {
 	if len(paths) == 0 {
 		return nil, nil
 	}
@@ -518,7 +520,7 @@ func collectArtifacts(deployDir string, paths []string) ([]bundleFile, error) {
 		if err != nil {
 			return nil, err
 		}
-		absPath := filepath.Join(deployDir, filepath.FromSlash(relPath))
+		absPath := filepath.Join(bundleRoot, filepath.FromSlash(relPath))
 		info, err := os.Stat(absPath)
 		if err != nil {
 			return nil, fmt.Errorf("artifact path %q not found", relPath)
@@ -532,7 +534,7 @@ func collectArtifacts(deployDir string, paths []string) ([]bundleFile, error) {
 				if entry.IsDir() {
 					return nil
 				}
-				return appendArtifactFile(deployDir, path, &files, &totalBytes)
+				return appendArtifactFile(bundleRoot, path, &files, &totalBytes)
 			})
 			if err != nil {
 				return nil, err
@@ -540,7 +542,7 @@ func collectArtifacts(deployDir string, paths []string) ([]bundleFile, error) {
 			continue
 		}
 
-		if err := appendArtifactFile(deployDir, absPath, &files, &totalBytes); err != nil {
+		if err := appendArtifactFile(bundleRoot, absPath, &files, &totalBytes); err != nil {
 			return nil, err
 		}
 	}
@@ -548,7 +550,7 @@ func collectArtifacts(deployDir string, paths []string) ([]bundleFile, error) {
 	return files, nil
 }
 
-func appendArtifactFile(deployDir string, absPath string, files *[]bundleFile, totalBytes *int) error {
+func appendArtifactFile(bundleRoot string, absPath string, files *[]bundleFile, totalBytes *int) error {
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return err
@@ -557,7 +559,7 @@ func appendArtifactFile(deployDir string, absPath string, files *[]bundleFile, t
 	if *totalBytes > deployArtifactReturnLimit {
 		return fmt.Errorf("returned artifacts exceed %d bytes", deployArtifactReturnLimit)
 	}
-	relPath, err := filepath.Rel(deployDir, absPath)
+	relPath, err := filepath.Rel(bundleRoot, absPath)
 	if err != nil {
 		return err
 	}
