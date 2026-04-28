@@ -150,20 +150,44 @@ const appPage = `<!doctype html>
       list.append(item)
     }
 
-    const renderState = (state) => {
-      if (document.activeElement !== displayName) displayName.value = state.name || ''
-      nodeName.textContent = 'This node is a ' + state.peerType + ' peer and can discover other peers over P2P for deployment.'
-      nodeAddrs.textContent = state.addrs.join('\n')
-      renderNetwork(state.network)
+    const asArray = (value) => Array.isArray(value) ? value : []
 
-      if (selectedBundle !== '' && !state.bundles.includes(selectedBundle)) selectedBundle = ''
-      if (selectedBundle === '' && state.bundles.length > 0) selectedBundle = state.bundles[0]
+    const normalizeNetwork = (network) => ({
+      relayService: Boolean(network?.relayService),
+      relayConfigured: Boolean(network?.relayConfigured),
+      hasCircuitAddr: Boolean(network?.hasCircuitAddr),
+      dhtEnabled: Boolean(network?.dhtEnabled),
+      dhtMode: network?.dhtMode || '',
+      dockerDeploy: Boolean(network?.dockerDeploy),
+      dhtPeers: Number(network?.dhtPeers || 0),
+      connectedPeers: Number(network?.connectedPeers || 0),
+      rendezvous: network?.rendezvous || '',
+      staticRelayCount: Number(network?.staticRelayCount || 0),
+      bootstrapPeerCount: Number(network?.bootstrapPeerCount || 0),
+      circuitAddrs: asArray(network?.circuitAddrs)
+    })
+
+    const renderState = (state) => {
+      const bundlesList = asArray(state?.bundles)
+      const peersList = asArray(state?.peers)
+      const deploymentsList = asArray(state?.deployments)
+      const artifactsList = asArray(state?.artifacts)
+      const addrsList = asArray(state?.addrs)
+      const network = normalizeNetwork(state?.network)
+
+      if (document.activeElement !== displayName) displayName.value = state?.name || ''
+      nodeName.textContent = 'This node is a ' + (state?.peerType || 'renter') + ' peer and can discover other peers over P2P for deployment.'
+      nodeAddrs.textContent = addrsList.join('\n')
+      renderNetwork(network)
+
+      if (selectedBundle !== '' && !bundlesList.includes(selectedBundle)) selectedBundle = ''
+      if (selectedBundle === '' && bundlesList.length > 0) selectedBundle = bundlesList[0]
 
       bundles.innerHTML = ''
-      if (state.bundles.length === 0) {
+      if (bundlesList.length === 0) {
         renderListMessage(bundles, 'No deployment bundles uploaded.')
       } else {
-        for (const name of state.bundles) {
+        for (const name of bundlesList) {
           const item = document.createElement('li')
           const choice = document.createElement('label')
           const radio = document.createElement('input')
@@ -195,10 +219,10 @@ const appPage = `<!doctype html>
       }
 
       peers.innerHTML = ''
-      if (state.peers.length === 0) {
+      if (peersList.length === 0) {
         renderListMessage(peers, 'No peers discovered yet.')
       } else {
-        for (const peer of state.peers) {
+        for (const peer of peersList) {
           const item = document.createElement('li')
           const info = document.createElement('div')
           const title = document.createElement('strong')
@@ -219,10 +243,11 @@ const appPage = `<!doctype html>
       }
 
       deployments.innerHTML = ''
-      if (state.deployments.length === 0) {
+      if (deploymentsList.length === 0) {
         renderListMessage(deployments, 'No deployments yet.')
       } else {
-        for (const event of state.deployments) {
+        for (const event of deploymentsList) {
+          const eventArtifacts = asArray(event?.artifacts)
           const item = document.createElement('li')
           const wrap = document.createElement('div')
           const title = document.createElement('strong')
@@ -238,7 +263,7 @@ const appPage = `<!doctype html>
           output.textContent = event.output || 'No command output.'
           logs.textContent = event.logs || 'No compose logs.'
           artifactList.className = 'meta'
-          artifactList.textContent = event.artifacts?.length ? 'Artifacts: ' + event.artifacts.join(', ') : 'Artifacts: none'
+          artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
           wrap.append(title, meta, command, output, logs, artifactList)
           item.append(wrap)
           deployments.append(item)
@@ -246,10 +271,10 @@ const appPage = `<!doctype html>
       }
 
       artifacts.innerHTML = ''
-      if (state.artifacts.length === 0) {
+      if (artifactsList.length === 0) {
         renderListMessage(artifacts, 'No returned artifacts yet.')
       } else {
-        for (const path of state.artifacts) {
+        for (const path of artifactsList) {
           const item = document.createElement('li')
           const link = document.createElement('a')
           link.textContent = path
