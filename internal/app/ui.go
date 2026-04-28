@@ -42,6 +42,9 @@ const appPage = `<!doctype html>
     .badge.warn { background: #fff4db; color: #855c00; }
     .address-actions { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; }
     .address-actions code { flex: 1 1 320px; }
+    .bundle-choice { display: flex; gap: 10px; align-items: flex-start; flex: 1 1 auto; }
+    .bundle-choice input[type="radio"] { margin-top: 4px; }
+    .bundle-copy { flex: 1 1 auto; }
     @media (max-width: 760px) {
       main { width: min(100vw - 24px, 1120px); padding: 20px 0; }
       .grid { grid-template-columns: 1fr; }
@@ -86,17 +89,9 @@ const appPage = `<!doctype html>
         <ul id="bundles" style="margin-top:18px"></ul>
         <h2 style="margin-top:18px">Deploy Settings</h2>
         <div class="row" style="margin-top:14px">
-          <input id="deployArchive" type="text" placeholder="bundle.tar.gz">
+          <input id="artifactPaths" type="text" placeholder="returned artifact paths, comma-separated">
         </div>
-        <div class="row" style="margin-top:10px">
-          <input id="deployProject" type="text" placeholder="project name">
-        </div>
-        <div class="row" style="margin-top:10px">
-          <input id="deployCompose" type="text" placeholder="docker-compose.yml">
-        </div>
-        <div class="row" style="margin-top:10px">
-          <input id="artifactPaths" type="text" placeholder="artifact paths, comma-separated">
-        </div>
+        <p class="meta" style="margin-top:10px">Select one bundle above. Compose file defaults to <code style="display:inline; padding:2px 6px">docker-compose.yml</code>. Artifact paths are relative to the bundle root, so do not include the project name prefix.</p>
       </section>
 
       <section class="panel">
@@ -135,11 +130,9 @@ const appPage = `<!doctype html>
     const filesInput = document.querySelector('#files')
     const displayName = document.querySelector('#displayName')
     const manualAddr = document.querySelector('#manualAddr')
-    const deployArchive = document.querySelector('#deployArchive')
-    const deployProject = document.querySelector('#deployProject')
-    const deployCompose = document.querySelector('#deployCompose')
     const artifactPaths = document.querySelector('#artifactPaths')
     let bestCircuitAddr = ''
+    let selectedBundle = ''
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -159,10 +152,12 @@ const appPage = `<!doctype html>
 
     const renderState = (state) => {
       if (document.activeElement !== displayName) displayName.value = state.name || ''
-      if (document.activeElement !== deployCompose && deployCompose.value === '') deployCompose.value = 'docker-compose.yml'
       nodeName.textContent = 'This node is a ' + state.peerType + ' peer and can discover other peers over P2P for deployment.'
       nodeAddrs.textContent = state.addrs.join('\n')
       renderNetwork(state.network)
+
+      if (selectedBundle !== '' && !state.bundles.includes(selectedBundle)) selectedBundle = ''
+      if (selectedBundle === '' && state.bundles.length > 0) selectedBundle = state.bundles[0]
 
       bundles.innerHTML = ''
       if (state.bundles.length === 0) {
@@ -170,15 +165,31 @@ const appPage = `<!doctype html>
       } else {
         for (const name of state.bundles) {
           const item = document.createElement('li')
-          const label = document.createElement('span')
+          const choice = document.createElement('label')
+          const radio = document.createElement('input')
+          const copy = document.createElement('div')
+          const title = document.createElement('strong')
+          const meta = document.createElement('div')
           const remove = document.createElement('button')
-          label.textContent = name
+          choice.className = 'bundle-choice'
+          copy.className = 'bundle-copy'
+          meta.className = 'meta'
+          radio.type = 'radio'
+          radio.name = 'deployBundle'
+          radio.checked = selectedBundle === name
+          radio.onchange = () => {
+            selectedBundle = name
+          }
+          title.textContent = name
+          meta.textContent = selectedBundle === name ? 'Selected for deployment.' : 'Select this bundle for the next deploy.'
           remove.textContent = 'Remove'
           remove.onclick = async () => {
             await fetch('/api/bundles?name=' + encodeURIComponent(name), { method: 'DELETE' })
             await loadState()
           }
-          item.append(label, remove)
+          copy.append(title, meta)
+          choice.append(radio, copy)
+          item.append(choice, remove)
           bundles.append(item)
         }
       }
@@ -309,9 +320,9 @@ const appPage = `<!doctype html>
     }
 
     const deployToTarget = async ({ peerId = '', addr = '', label = 'target' }) => {
-      const archiveName = deployArchive.value.trim()
+      const archiveName = selectedBundle.trim()
       if (archiveName === '') {
-        status.textContent = 'Fill in the deployment bundle file name first.'
+        status.textContent = 'Select one deployment bundle first.'
         return
       }
       status.textContent = 'Deploying bundle to ' + label + '...'
@@ -322,8 +333,8 @@ const appPage = `<!doctype html>
           peerId,
           addr,
           archiveName,
-          projectName: deployProject.value.trim(),
-          composeFile: deployCompose.value.trim(),
+          projectName: '',
+          composeFile: '',
           artifactPaths: artifactPaths.value.trim()
         })
       })

@@ -16,11 +16,18 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 const deployOutputLimit = 12000
 const deployLogsLimit = 24000
 const deployArtifactReturnLimit = 16 * 1024 * 1024
+
+type dockerComposeFiles struct {
+	basePath     string
+	overridePath string
+}
 
 func dockerDeployEnabled() bool {
 	return getenvBool("APP_DOCKER_DEPLOY_ENABLED", false)
@@ -84,7 +91,12 @@ func executeDeploy(payload deployPayload) deployResponse {
 		return deployResponse{Message: err.Error(), Directory: deployDir}
 	}
 
-	command, err := newDockerDeployCommand(projectName, composePath, deployDir)
+	composeFiles, err := prepareDockerComposeFiles(composePath, deployDir)
+	if err != nil {
+		return deployResponse{Message: err.Error(), Directory: deployDir}
+	}
+
+	command, err := newDockerDeployCommand(projectName, composeFiles, deployDir)
 	if err != nil {
 		return deployResponse{Message: err.Error(), Directory: deployDir}
 	}
@@ -96,11 +108,16 @@ func executeDeploy(payload deployPayload) deployResponse {
 		ok = false
 		message = err.Error()
 	}
-	logsOutput := collectComposeLogs(projectName, composePath, deployDir)
+	logsOutput := collectComposeLogs(projectName, composeFiles, deployDir)
 	artifacts, artifactErr := collectArtifacts(deployDir, payload.ArtifactPaths)
 	if artifactErr != nil {
 		ok = false
 		message = artifactErr.Error()
+	}
+	cleanupOutput, cleanupErr := cleanupDockerDeployment(projectName, composeFiles, deployDir)
+	if cleanupErr != nil {
+		ok = false
+		message = cleanupErr.Error()
 	}
 
 	event := deployEvent{
@@ -110,7 +127,7 @@ func executeDeploy(payload deployPayload) deployResponse {
 		ArchiveName: payload.Archive.Name,
 		Status:      "success",
 		Command:     commandLine,
-		Output:      trimOutput(string(output)),
+		Output:      trimOutput(joinCommandOutputs(string(output), cleanupOutput)),
 		Logs:        trimLogs(logsOutput),
 	}
 	if !ok {
@@ -126,7 +143,7 @@ func executeDeploy(payload deployPayload) deployResponse {
 		OK:          ok,
 		Message:     message,
 		Command:     commandLine,
-		Output:      trimOutput(string(output)),
+		Output:      trimOutput(joinCommandOutputs(string(output), cleanupOutput)),
 		Logs:        trimLogs(logsOutput),
 		Artifacts:   artifacts,
 		ProjectName: projectName,
@@ -183,23 +200,12 @@ func checkDockerDeployPrerequisites(composePath string, deployDir string) error 
 	return nil
 }
 
-func newDockerDeployCommand(projectName string, composePath string, deployDir string) (*exec.Cmd, error) {
+func newDockerDeployCommand(projectName string, files dockerComposeFiles, deployDir string) (*exec.Cmd, error) {
 	runtimeName := dockerDeployRuntime()
-	composeArgPath := composePath
-	args := []string{
-		"compose",
-		"-p",
-		projectName,
-		"-f",
-		composeArgPath,
-		"up",
-		"-d",
-		"--build",
-	}
+	args := dockerComposeCommandArgs(projectName, files, "up", "-d", "--build")
 
 	if runtime.GOOS == "windows" {
-		composeArgPath = toWSLPath(composePath)
-		args[4] = composeArgPath
+		args = dockerComposeWSLArgs(projectName, files, "up", "-d", "--build")
 		wslArgs := make([]string, 0, len(args)+6)
 		if distro := dockerWSLDistro(); distro != "" {
 			wslArgs = append(wslArgs, "-d", distro)
@@ -225,21 +231,10 @@ func newDockerDeployCommand(projectName string, composePath string, deployDir st
 	return command, nil
 }
 
-func newDockerLogsCommand(projectName string, composePath string, deployDir string) *exec.Cmd {
-	args := []string{
-		"compose",
-		"-p",
-		projectName,
-		"-f",
-		composePath,
-		"logs",
-		"--no-color",
-		"--tail",
-		"200",
-	}
+func newDockerLogsCommand(projectName string, files dockerComposeFiles, deployDir string) *exec.Cmd {
+	args := dockerComposeCommandArgs(projectName, files, "logs", "--no-color", "--tail", "200")
 
 	if runtime.GOOS == "windows" {
-		args[4] = toWSLPath(composePath)
 		wslArgs := make([]string, 0, len(args)+6)
 		if distro := dockerWSLDistro(); distro != "" {
 			wslArgs = append(wslArgs, "-d", distro)
@@ -254,6 +249,44 @@ func newDockerLogsCommand(projectName string, composePath string, deployDir stri
 	command := exec.Command("docker", args...)
 	command.Dir = deployDir
 	return command
+}
+
+func newDockerCleanupCommand(projectName string, files dockerComposeFiles, deployDir string) *exec.Cmd {
+	args := dockerComposeCommandArgs(projectName, files, "down", "--volumes", "--rmi", "all", "--remove-orphans")
+
+	if runtime.GOOS == "windows" {
+		wslArgs := make([]string, 0, len(args)+6)
+		if distro := dockerWSLDistro(); distro != "" {
+			wslArgs = append(wslArgs, "-d", distro)
+		}
+		wslArgs = append(wslArgs, "--cd", toWSLPath(deployDir), "docker")
+		wslArgs = append(wslArgs, dockerComposeWSLArgs(projectName, files, "down", "--volumes", "--rmi", "all", "--remove-orphans")...)
+		command := exec.Command("wsl", wslArgs...)
+		command.Dir = deployDir
+		return command
+	}
+
+	command := exec.Command("docker", args...)
+	command.Dir = deployDir
+	return command
+}
+
+func dockerComposeCommandArgs(projectName string, files dockerComposeFiles, action string, extraArgs ...string) []string {
+	args := []string{"compose", "-p", projectName, "-f", files.basePath}
+	if files.overridePath != "" {
+		args = append(args, "-f", files.overridePath)
+	}
+	args = append(args, action)
+	args = append(args, extraArgs...)
+	return args
+}
+
+func dockerComposeWSLArgs(projectName string, files dockerComposeFiles, action string, extraArgs ...string) []string {
+	wslFiles := dockerComposeFiles{
+		basePath:     toWSLPath(files.basePath),
+		overridePath: toWSLPath(files.overridePath),
+	}
+	return dockerComposeCommandArgs(projectName, wslFiles, action, extraArgs...)
 }
 
 func toWSLPath(path string) string {
@@ -329,8 +362,8 @@ func renderCommand(command *exec.Cmd) string {
 	return strings.Join(append([]string{command.Path}, command.Args[1:]...), " ")
 }
 
-func collectComposeLogs(projectName string, composePath string, deployDir string) string {
-	command := newDockerLogsCommand(projectName, composePath, deployDir)
+func collectComposeLogs(projectName string, files dockerComposeFiles, deployDir string) string {
+	command := newDockerLogsCommand(projectName, files, deployDir)
 	if command == nil {
 		return ""
 	}
@@ -347,6 +380,115 @@ func trimLogs(output string) string {
 		return output
 	}
 	return output[:deployLogsLimit] + "\n...logs truncated..."
+}
+
+func cleanupDockerDeployment(projectName string, files dockerComposeFiles, deployDir string) (string, error) {
+	command := newDockerCleanupCommand(projectName, files, deployDir)
+	output, commandErr := command.CombinedOutput()
+	removeErr := os.RemoveAll(deployDir)
+
+	var cleanupMessages []string
+	text := strings.TrimSpace(string(output))
+	if text != "" {
+		cleanupMessages = append(cleanupMessages, "[cleanup]\n"+text)
+	}
+
+	if commandErr == nil && removeErr == nil {
+		return strings.Join(cleanupMessages, "\n\n"), nil
+	}
+
+	var problems []string
+	if commandErr != nil {
+		problems = append(problems, formatCommandError(commandErr, output).Error())
+	}
+	if removeErr != nil {
+		problems = append(problems, "could not remove deployment directory: "+removeErr.Error())
+	}
+	return strings.Join(cleanupMessages, "\n\n"), errors.New(strings.Join(problems, "; "))
+}
+
+func joinCommandOutputs(parts ...string) string {
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return strings.Join(out, "\n\n")
+}
+
+func prepareDockerComposeFiles(composePath string, deployDir string) (dockerComposeFiles, error) {
+	files := dockerComposeFiles{basePath: composePath}
+	runtimeName := dockerDeployRuntime()
+	if runtimeName == "" {
+		return files, nil
+	}
+
+	overridePath, err := writeDockerRuntimeOverrideFile(composePath, deployDir, runtimeName)
+	if err != nil {
+		return dockerComposeFiles{}, err
+	}
+	files.overridePath = overridePath
+	return files, nil
+}
+
+func writeDockerRuntimeOverrideFile(composePath string, deployDir string, runtimeName string) (string, error) {
+	serviceNames, err := listComposeServiceNames(composePath)
+	if err != nil {
+		return "", err
+	}
+	if len(serviceNames) == 0 {
+		return "", errors.New("compose file does not define any services")
+	}
+
+	type runtimeOverrideService struct {
+		Runtime string `yaml:"runtime"`
+	}
+	type runtimeOverrideDoc struct {
+		Services map[string]runtimeOverrideService `yaml:"services"`
+	}
+
+	override := runtimeOverrideDoc{
+		Services: make(map[string]runtimeOverrideService, len(serviceNames)),
+	}
+	for _, serviceName := range serviceNames {
+		override.Services[serviceName] = runtimeOverrideService{Runtime: runtimeName}
+	}
+
+	bytes, err := yaml.Marshal(override)
+	if err != nil {
+		return "", err
+	}
+
+	overridePath := filepath.Join(deployDir, ".runtime-override.compose.yaml")
+	if err := os.WriteFile(overridePath, bytes, 0644); err != nil {
+		return "", err
+	}
+	return overridePath, nil
+}
+
+func listComposeServiceNames(composePath string) ([]string, error) {
+	type composeDocument struct {
+		Services map[string]any `yaml:"services"`
+	}
+
+	bytes, err := os.ReadFile(composePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var doc composeDocument
+	if err := yaml.Unmarshal(bytes, &doc); err != nil {
+		return nil, fmt.Errorf("could not parse compose file: %w", err)
+	}
+
+	names := make([]string, 0, len(doc.Services))
+	for name := range doc.Services {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names, nil
 }
 
 func collectArtifacts(deployDir string, paths []string) ([]bundleFile, error) {
