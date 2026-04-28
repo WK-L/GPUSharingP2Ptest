@@ -30,7 +30,7 @@ const appPage = `<!doctype html>
     input[type="file"] { border-style: dashed; }
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .row > input[type="file"] { flex: 1 1 280px; }
-    code { display: block; overflow-wrap: anywhere; padding: 10px; border-radius: 8px; background: #eef2f7; line-height: 1.45; color: #172033; }
+    code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; padding: 10px; border-radius: 8px; background: #eef2f7; line-height: 1.45; color: #172033; }
     ul { list-style: none; margin: 0; padding: 0; }
     li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ebf2; }
     li:first-child { border-top: 0; }
@@ -264,7 +264,8 @@ const appPage = `<!doctype html>
           logs.textContent = event.logs || 'No compose logs.'
           artifactList.className = 'meta'
           artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
-          wrap.append(title, meta, command, output, logs, artifactList)
+          // wrap.append(title, meta, command, output, logs, artifactList) // 印出docker command
+          wrap.append(title, meta, logs, artifactList)
           item.append(wrap)
           deployments.append(item)
         }
@@ -389,7 +390,7 @@ const appPage = `<!doctype html>
     }
 
     loadState().catch((err) => { status.textContent = err.message })
-    setInterval(loadState, 2000)
+    setInterval(loadState, 5000)
   </script>
 </body>
 </html>`

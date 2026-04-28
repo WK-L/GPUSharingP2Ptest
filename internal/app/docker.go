@@ -397,12 +397,9 @@ func cleanupDockerDeployment(projectName string, files dockerComposeFiles, deplo
 		return "", nil
 	}
 
-	// command := newDockerCleanupCommand(projectName, files, deployDir)
-	// output, commandErr := command.CombinedOutput()
-	// removeErr := os.RemoveAll(deployDir)
-	output := []byte{}
-	var commandErr error
-	var removeErr error
+	command := newDockerCleanupCommand(projectName, files, deployDir)
+	output, commandErr := command.CombinedOutput()
+	removeErr := os.RemoveAll(deployDir)
 
 	var cleanupMessages []string
 	text := strings.TrimSpace(string(output))
