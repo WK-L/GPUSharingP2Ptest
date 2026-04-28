@@ -205,7 +205,6 @@ func recordDeployResult(response deployResponse, payload deployPayload, savedArt
 		ProjectName: fallback(response.ProjectName, payload.ProjectName),
 		ArchiveName: payload.Archive.Name,
 		Status:      status,
-		Command:     response.Command,
 		Output:      response.Output,
 		Logs:        response.Logs,
 		Artifacts:   savedArtifacts,

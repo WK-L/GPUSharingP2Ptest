@@ -35,13 +35,12 @@ type bundleFile struct {
 }
 
 type deployEvent struct {
-	Key         string     `json:"-"`
+	Key         string     `json:"key,omitempty"`
 	At          string     `json:"at"`
 	Source      *peerBrief `json:"source,omitempty"`
 	ProjectName string     `json:"projectName"`
 	ArchiveName string     `json:"archiveName"`
 	Status      string     `json:"status"`
-	Command     string     `json:"command,omitempty"`
 	Output      string     `json:"output,omitempty"`
 	Logs        string     `json:"logs,omitempty"`
 	Artifacts   []string   `json:"artifacts,omitempty"`

@@ -31,7 +31,7 @@ const appPage = `<!doctype html>
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .row > input[type="file"] { flex: 1 1 280px; }
     code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; padding: 10px; border-radius: 8px; background: #eef2f7; line-height: 1.45; color: #172033; }
-    .terminal { min-height: 160px; max-height: 160px; overflow: auto; padding: 12px; border: 1px solid #233042; border-radius: 8px; background: #0f1720; color: #d6e2f0; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; line-height: 1.5; }
+    .terminal { min-height: 400px; max-height: 400px; overflow: auto; padding: 12px; border: 1px solid #233042; border-radius: 8px; background: #0f1720; color: #d6e2f0; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; line-height: 1.5; }
     ul { list-style: none; margin: 0; padding: 0; }
     li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ebf2; }
     li:first-child { border-top: 0; }
@@ -46,9 +46,9 @@ const appPage = `<!doctype html>
     .bundle-choice { display: flex; gap: 10px; align-items: flex-start; flex: 1 1 auto; }
     .bundle-choice input[type="radio"] { margin-top: 4px; }
     .bundle-copy { flex: 1 1 auto; }
-    .terminal-label { margin: 10px 0 6px; color: #5c6676; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
-    .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
-    .section-head h2 { margin-bottom: 0; }
+    .terminal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0 6px; }
+    .terminal-label { color: #5c6676; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+    .icon-button { min-width: 42px; width: 42px; padding: 0; font-size: 16px; line-height: 1; }
     @media (max-width: 760px) {
       main { width: min(100vw - 24px, 1120px); padding: 20px 0; }
       .grid { grid-template-columns: 1fr; }
@@ -108,10 +108,7 @@ const appPage = `<!doctype html>
       </section>
 
       <section class="panel wide">
-        <div class="section-head">
-          <h2>Deployment Activity</h2>
-          <button id="toggleLogUpdates">Pause Log Updates</button>
-        </div>
+        <h2>Deployment Activity</h2>
         <ul id="deployments"></ul>
       </section>
 
@@ -138,10 +135,9 @@ const appPage = `<!doctype html>
     const displayName = document.querySelector('#displayName')
     const manualAddr = document.querySelector('#manualAddr')
     const artifactPaths = document.querySelector('#artifactPaths')
-    const toggleLogUpdates = document.querySelector('#toggleLogUpdates')
     let bestCircuitAddr = ''
     let selectedBundle = ''
-    let logsPaused = false
+    const logViews = new Map()
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -171,8 +167,22 @@ const appPage = `<!doctype html>
       return parts.join('\n\n')
     }
 
-    const refreshLogToggleLabel = () => {
-      toggleLogUpdates.textContent = logsPaused ? 'Resume Log Updates' : 'Pause Log Updates'
+    const refreshLogToggleButton = (button, paused) => {
+      if (!button) return
+      button.textContent = paused ? '▶' : '⏸'
+      button.title = paused ? 'Resume this log' : 'Pause this log'
+      button.setAttribute('aria-label', button.title)
+    }
+
+    const deploymentEventKey = (event) => event?.key || [event?.at, event?.archiveName, event?.projectName].join('|')
+
+    const deploymentView = (eventKey) => {
+      let view = logViews.get(eventKey)
+      if (!view) {
+        view = { paused: false, frozen: false, text: '', scrollTop: 0 }
+        logViews.set(eventKey, view)
+      }
+      return view
     }
 
     const normalizeNetwork = (network) => ({
@@ -265,33 +275,74 @@ const appPage = `<!doctype html>
         }
       }
 
-      refreshLogToggleLabel()
-      if (!logsPaused) {
-        deployments.innerHTML = ''
-        if (deploymentsList.length === 0) {
-          renderListMessage(deployments, 'No deployments yet.')
-        } else {
-          for (const event of deploymentsList) {
-            const eventArtifacts = asArray(event?.artifacts)
-            const item = document.createElement('li')
-            const wrap = document.createElement('div')
-            const title = document.createElement('strong')
-            const meta = document.createElement('div')
-            const logLabel = document.createElement('div')
-            const logBox = document.createElement('code')
-            const artifactList = document.createElement('div')
-            logLabel.className = 'terminal-label'
-            logBox.className = 'terminal'
-            title.textContent = event.projectName + ' - ' + event.status
-            meta.className = 'meta'
-            meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
-            logLabel.textContent = 'log'
-            logBox.textContent = formatDeploymentLog(event)
-            artifactList.className = 'meta'
-            artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
-            wrap.append(title, meta, logLabel, logBox, artifactList)
-            item.append(wrap)
-            deployments.append(item)
+      deployments.innerHTML = ''
+      if (deploymentsList.length === 0) {
+        renderListMessage(deployments, 'No deployments yet.')
+      } else {
+        for (const event of deploymentsList) {
+          const eventArtifacts = asArray(event?.artifacts)
+          const eventKey = deploymentEventKey(event)
+          const item = document.createElement('li')
+          const wrap = document.createElement('div')
+          const title = document.createElement('strong')
+          const meta = document.createElement('div')
+          const logHead = document.createElement('div')
+          const logLabel = document.createElement('div')
+          const logToggle = document.createElement('button')
+          const logBox = document.createElement('code')
+          const artifactList = document.createElement('div')
+          const view = deploymentView(eventKey)
+          const nextLogText = formatDeploymentLog(event)
+          const isCompleted = event.status === 'success' || event.status === 'failed'
+
+          logHead.className = 'terminal-head'
+          logLabel.className = 'terminal-label'
+          logToggle.className = 'icon-button'
+          logToggle.type = 'button'
+          logBox.className = 'terminal'
+          title.textContent = event.projectName + ' - ' + event.status
+          meta.className = 'meta'
+          meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
+          logLabel.textContent = 'log'
+          if (isCompleted && !view.frozen) {
+            view.text = nextLogText
+            view.frozen = true
+          }
+          refreshLogToggleButton(logToggle, view.paused)
+          logToggle.disabled = isCompleted
+          logToggle.onclick = async () => {
+            const currentView = deploymentView(eventKey)
+            if (currentView.paused) {
+              currentView.paused = false
+              currentView.text = ''
+              status.textContent = 'Log updates resumed for ' + (event.projectName || 'deployment') + '.'
+              await loadState()
+              return
+            }
+            currentView.paused = true
+            currentView.text = nextLogText
+            status.textContent = 'Log updates paused for ' + (event.projectName || 'deployment') + '.'
+            renderState(state)
+          }
+
+          if (view.frozen || view.paused) {
+            logBox.textContent = view.text || nextLogText
+          } else {
+            logBox.textContent = nextLogText
+          }
+
+          artifactList.className = 'meta'
+          artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
+          logBox.onscroll = () => {
+            view.scrollTop = logBox.scrollTop
+          }
+          logHead.append(logLabel, logToggle)
+          wrap.append(title, meta, logHead, logBox, artifactList)
+          item.append(wrap)
+          deployments.append(item)
+          if (view.frozen || view.paused) {
+            logBox.scrollTop = view.scrollTop || 0
+          } else {
             logBox.scrollTop = logBox.scrollHeight
           }
         }
@@ -415,16 +466,6 @@ const appPage = `<!doctype html>
       status.textContent = 'Circuit address copied.'
     }
 
-    toggleLogUpdates.onclick = async () => {
-      logsPaused = !logsPaused
-      refreshLogToggleLabel()
-      status.textContent = logsPaused ? 'Log updates paused.' : 'Log updates resumed.'
-      if (!logsPaused) {
-        await loadState()
-      }
-    }
-
-    refreshLogToggleLabel()
     loadState().catch((err) => { status.textContent = err.message })
     setInterval(loadState, 5000)
   </script>

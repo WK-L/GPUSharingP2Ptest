@@ -51,7 +51,7 @@ func dockerWSLDistro() string {
 
 func executeDeploy(payload deployPayload) deployExecutionResult {
 	eventKey := deployEventKey(payload)
-	pushEvent := func(projectName string, archiveName string, status string, output string, logs string, command string, artifacts []string) {
+	pushEvent := func(projectName string, archiveName string, status string, output string, logs string, artifacts []string) {
 		upsertDeployEvent(deployEvent{
 			Key:         eventKey,
 			At:          time.Now().Format(time.RFC3339),
@@ -59,14 +59,13 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 			ProjectName: projectName,
 			ArchiveName: archiveName,
 			Status:      status,
-			Command:     command,
 			Output:      output,
 			Logs:        logs,
 			Artifacts:   artifacts,
 		})
 	}
 	fail := func(projectName string, archiveName string, deployDir string, message string) deployExecutionResult {
-		pushEvent(projectName, archiveName, "failed", message, "", "", nil)
+		pushEvent(projectName, archiveName, "failed", message, "", nil)
 		return deployExecutionResult{response: deployResponse{Message: message, Directory: deployDir, ProjectName: projectName}}
 	}
 
@@ -131,9 +130,9 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 		return fail(projectName, payload.Archive.Name, deployDir, err.Error())
 	}
 	commandLine := renderCommand(command)
-	pushEvent(projectName, payload.Archive.Name, "running", "Provider started Docker deployment.", "Waiting for container output...", commandLine, nil)
+	pushEvent(projectName, payload.Archive.Name, "running", "Provider started Docker deployment.", "Waiting for container output...", nil)
 	output, err := runCommandStreaming(command, func(snapshot string) {
-		pushEvent(projectName, payload.Archive.Name, "running", trimOutput(snapshot), trimLogs(snapshot), commandLine, nil)
+		pushEvent(projectName, payload.Archive.Name, "running", trimOutput(snapshot), trimLogs(snapshot), nil)
 	})
 	message := "deployment completed"
 	ok := true
@@ -152,7 +151,7 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 	if !ok {
 		status = "failed"
 	}
-	pushEvent(projectName, payload.Archive.Name, status, trimOutput(output), trimLogs(logsOutput), commandLine, nil)
+	pushEvent(projectName, payload.Archive.Name, status, trimOutput(output), trimLogs(logsOutput), nil)
 
 	return deployExecutionResult{
 		response: deployResponse{
