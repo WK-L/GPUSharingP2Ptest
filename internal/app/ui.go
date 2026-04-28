@@ -31,7 +31,7 @@ const appPage = `<!doctype html>
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .row > input[type="file"] { flex: 1 1 280px; }
     code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; padding: 10px; border-radius: 8px; background: #eef2f7; line-height: 1.45; color: #172033; }
-    .terminal { min-height: 400px; max-height: 400px; overflow: auto; padding: 12px; border: 1px solid #233042; border-radius: 8px; background: #0f1720; color: #d6e2f0; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; line-height: 1.5; }
+    .terminal { width: 100%; min-width: 100%; max-width: 100%; min-height: 400px; max-height: 400px; overflow: auto; padding: 12px; border: 1px solid #233042; border-radius: 8px; background: #0f1720; color: #d6e2f0; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; line-height: 1.5; }
     ul { list-style: none; margin: 0; padding: 0; }
     li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ebf2; }
     li:first-child { border-top: 0; }
@@ -138,6 +138,7 @@ const appPage = `<!doctype html>
     let bestCircuitAddr = ''
     let selectedBundle = ''
     const logViews = new Map()
+    let lastDeploymentsSignature = ''
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -184,6 +185,15 @@ const appPage = `<!doctype html>
       }
       return view
     }
+
+    const deploymentsSignature = (items) => JSON.stringify(asArray(items).map((event) => ({
+      key: deploymentEventKey(event),
+      at: event?.at || '',
+      status: event?.status || '',
+      output: event?.output || '',
+      logs: event?.logs || '',
+      artifacts: asArray(event?.artifacts),
+    })))
 
     const normalizeNetwork = (network) => ({
       relayService: Boolean(network?.relayService),
@@ -275,77 +285,81 @@ const appPage = `<!doctype html>
         }
       }
 
-      deployments.innerHTML = ''
-      if (deploymentsList.length === 0) {
-        renderListMessage(deployments, 'No deployments yet.')
-      } else {
-        for (const event of deploymentsList) {
-          const eventArtifacts = asArray(event?.artifacts)
-          const eventKey = deploymentEventKey(event)
-          const item = document.createElement('li')
-          const wrap = document.createElement('div')
-          const title = document.createElement('strong')
-          const meta = document.createElement('div')
-          const logHead = document.createElement('div')
-          const logLabel = document.createElement('div')
-          const logToggle = document.createElement('button')
-          const logBox = document.createElement('code')
-          const artifactList = document.createElement('div')
-          const view = deploymentView(eventKey)
-          const nextLogText = formatDeploymentLog(event)
-          const isCompleted = event.status === 'success' || event.status === 'failed'
+      const nextDeploymentsSignature = deploymentsSignature(deploymentsList)
+      if (nextDeploymentsSignature !== lastDeploymentsSignature) {
+        deployments.innerHTML = ''
+        if (deploymentsList.length === 0) {
+          renderListMessage(deployments, 'No deployments yet.')
+        } else {
+          for (const event of deploymentsList) {
+            const eventArtifacts = asArray(event?.artifacts)
+            const eventKey = deploymentEventKey(event)
+            const item = document.createElement('li')
+            const wrap = document.createElement('div')
+            const title = document.createElement('strong')
+            const meta = document.createElement('div')
+            const logHead = document.createElement('div')
+            const logLabel = document.createElement('div')
+            const logToggle = document.createElement('button')
+            const logBox = document.createElement('code')
+            const artifactList = document.createElement('div')
+            const view = deploymentView(eventKey)
+            const nextLogText = formatDeploymentLog(event)
+            const isCompleted = event.status === 'success' || event.status === 'failed'
 
-          logHead.className = 'terminal-head'
-          logLabel.className = 'terminal-label'
-          logToggle.className = 'icon-button'
-          logToggle.type = 'button'
-          logBox.className = 'terminal'
-          title.textContent = event.projectName + ' - ' + event.status
-          meta.className = 'meta'
-          meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
-          logLabel.textContent = 'log'
-          if (isCompleted && !view.frozen) {
-            view.text = nextLogText
-            view.frozen = true
-          }
-          refreshLogToggleButton(logToggle, view.paused)
-          logToggle.disabled = isCompleted
-          logToggle.onclick = async () => {
-            const currentView = deploymentView(eventKey)
-            if (currentView.paused) {
-              currentView.paused = false
-              currentView.text = ''
-              status.textContent = 'Log updates resumed for ' + (event.projectName || 'deployment') + '.'
-              await loadState()
-              return
+            logHead.className = 'terminal-head'
+            logLabel.className = 'terminal-label'
+            logToggle.className = 'icon-button'
+            logToggle.type = 'button'
+            logBox.className = 'terminal'
+            title.textContent = event.projectName + ' - ' + event.status
+            meta.className = 'meta'
+            meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
+            logLabel.textContent = 'log'
+            if (isCompleted && !view.frozen) {
+              view.text = nextLogText
+              view.frozen = true
             }
-            currentView.paused = true
-            currentView.text = nextLogText
-            status.textContent = 'Log updates paused for ' + (event.projectName || 'deployment') + '.'
-            renderState(state)
-          }
+            refreshLogToggleButton(logToggle, view.paused)
+            logToggle.disabled = isCompleted
+            logToggle.onclick = async () => {
+              const currentView = deploymentView(eventKey)
+              if (currentView.paused) {
+                currentView.paused = false
+                currentView.text = ''
+                status.textContent = 'Log updates resumed for ' + (event.projectName || 'deployment') + '.'
+                await loadState()
+                return
+              }
+              currentView.paused = true
+              currentView.text = nextLogText
+              status.textContent = 'Log updates paused for ' + (event.projectName || 'deployment') + '.'
+              renderState(state)
+            }
 
-          if (view.frozen || view.paused) {
-            logBox.textContent = view.text || nextLogText
-          } else {
-            logBox.textContent = nextLogText
-          }
+            if (view.frozen || view.paused) {
+              logBox.textContent = view.text || nextLogText
+            } else {
+              logBox.textContent = nextLogText
+            }
 
-          artifactList.className = 'meta'
-          artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
-          logBox.onscroll = () => {
-            view.scrollTop = logBox.scrollTop
-          }
-          logHead.append(logLabel, logToggle)
-          wrap.append(title, meta, logHead, logBox, artifactList)
-          item.append(wrap)
-          deployments.append(item)
-          if (view.frozen || view.paused) {
-            logBox.scrollTop = view.scrollTop || 0
-          } else {
-            logBox.scrollTop = logBox.scrollHeight
+            artifactList.className = 'meta'
+            artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
+            logBox.onscroll = () => {
+              view.scrollTop = logBox.scrollTop
+            }
+            logHead.append(logLabel, logToggle)
+            wrap.append(title, meta, logHead, logBox, artifactList)
+            item.append(wrap)
+            deployments.append(item)
+            if (view.frozen || view.paused) {
+              logBox.scrollTop = view.scrollTop || 0
+            } else {
+              logBox.scrollTop = logBox.scrollHeight
+            }
           }
         }
+        lastDeploymentsSignature = nextDeploymentsSignature
       }
 
       artifacts.innerHTML = ''
