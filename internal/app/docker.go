@@ -3,6 +3,7 @@ package app
 import (
 	"archive/tar"
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
@@ -50,7 +51,7 @@ func dockerWSLDistro() string {
 
 func executeDeploy(payload deployPayload) deployExecutionResult {
 	eventKey := deployEventKey(payload)
-	finalizeEvent := func(projectName string, archiveName string, status string, output string, logs string, command string, artifacts []string) {
+	pushEvent := func(projectName string, archiveName string, status string, output string, logs string, command string, artifacts []string) {
 		upsertDeployEvent(deployEvent{
 			Key:         eventKey,
 			At:          time.Now().Format(time.RFC3339),
@@ -65,7 +66,7 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 		})
 	}
 	fail := func(projectName string, archiveName string, deployDir string, message string) deployExecutionResult {
-		finalizeEvent(projectName, archiveName, "failed", message, "", "", nil)
+		pushEvent(projectName, archiveName, "failed", message, "", "", nil)
 		return deployExecutionResult{response: deployResponse{Message: message, Directory: deployDir, ProjectName: projectName}}
 	}
 
@@ -130,7 +131,10 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 		return fail(projectName, payload.Archive.Name, deployDir, err.Error())
 	}
 	commandLine := renderCommand(command)
-	output, err := command.CombinedOutput()
+	pushEvent(projectName, payload.Archive.Name, "running", "Provider started Docker deployment.", "Waiting for container output...", commandLine, nil)
+	output, err := runCommandStreaming(command, func(snapshot string) {
+		pushEvent(projectName, payload.Archive.Name, "running", trimOutput(snapshot), trimLogs(snapshot), commandLine, nil)
+	})
 	message := "deployment completed"
 	ok := true
 	if err != nil {
@@ -148,14 +152,14 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 	if !ok {
 		status = "failed"
 	}
-	finalizeEvent(projectName, payload.Archive.Name, status, trimOutput(string(output)), trimLogs(logsOutput), commandLine, nil)
+	pushEvent(projectName, payload.Archive.Name, status, trimOutput(output), trimLogs(logsOutput), commandLine, nil)
 
 	return deployExecutionResult{
 		response: deployResponse{
 			OK:          ok,
 			Message:     message,
 			Command:     commandLine,
-			Output:      trimOutput(string(output)),
+			Output:      trimOutput(output),
 			Logs:        trimLogs(logsOutput),
 			Artifacts:   artifacts,
 			ProjectName: projectName,
@@ -165,6 +169,61 @@ func executeDeploy(payload deployPayload) deployExecutionResult {
 		deployDir:    deployDir,
 		projectName:  projectName,
 	}
+}
+
+func runCommandStreaming(command *exec.Cmd, onUpdate func(string)) (string, error) {
+	if command == nil {
+		return "", errors.New("command is required")
+	}
+
+	reader, writer := io.Pipe()
+	command.Stdout = writer
+	command.Stderr = writer
+
+	var output string
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer reader.Close()
+
+		var builder strings.Builder
+		buffered := bufio.NewReader(reader)
+		for {
+			chunk, err := buffered.ReadString('\n')
+			if chunk != "" {
+				builder.WriteString(chunk)
+				output = builder.String()
+				if onUpdate != nil {
+					onUpdate(output)
+				}
+			}
+			if err != nil {
+				rest, _ := io.ReadAll(buffered)
+				if len(rest) > 0 {
+					builder.Write(rest)
+					output = builder.String()
+					if onUpdate != nil {
+						onUpdate(output)
+					}
+				}
+				return
+			}
+		}
+	}()
+
+	if err := command.Start(); err != nil {
+		_ = writer.Close()
+		<-done
+		return "", err
+	}
+
+	waitErr := command.Wait()
+	_ = writer.Close()
+	<-done
+	if waitErr != nil {
+		return output, formatCommandError(waitErr, []byte(output))
+	}
+	return output, nil
 }
 
 func checkDockerDeployPrerequisites(composePath string, deployDir string) error {

@@ -43,6 +43,7 @@ func Run() error {
 
 	node.SetStreamHandler(peerInfoProtocol, newPeerInfoHandler(node))
 	node.SetStreamHandler(deployProtocol, handleDeployRequest)
+	node.SetStreamHandler(deployStatusProtocol, newDeployStatusHandler())
 
 	fmt.Println("Peer ID:", node.ID().String())
 	if created {

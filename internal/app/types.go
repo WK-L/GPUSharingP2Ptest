@@ -130,3 +130,12 @@ type deployResponse struct {
 	ProjectName string       `json:"projectName,omitempty"`
 	Directory   string       `json:"directory,omitempty"`
 }
+
+type deployStatusRequest struct {
+	Key string `json:"key"`
+}
+
+type deployStatusResponse struct {
+	Found bool        `json:"found"`
+	Event deployEvent `json:"event"`
+}

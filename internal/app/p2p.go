@@ -36,6 +36,30 @@ func newPeerInfoHandler(node host.Host) network.StreamHandler {
 	}
 }
 
+func newDeployStatusHandler() network.StreamHandler {
+	return func(s network.Stream) {
+		defer s.Close()
+
+		bytes, err := io.ReadAll(io.LimitReader(s, 64*1024))
+		if err != nil {
+			_ = writeStreamJSON(s, deployStatusResponse{})
+			return
+		}
+
+		var req deployStatusRequest
+		if err := json.Unmarshal(bytes, &req); err != nil {
+			_ = writeStreamJSON(s, deployStatusResponse{})
+			return
+		}
+
+		event, ok := getDeployEventByKey(req.Key)
+		_ = writeStreamJSON(s, deployStatusResponse{
+			Found: ok,
+			Event: event,
+		})
+	}
+}
+
 func handleDeployRequest(s network.Stream) {
 	defer s.Close()
 
@@ -111,6 +135,16 @@ func sendDeployBundle(node host.Host, req deployRequest) (deployResponse, error)
 		Source:        sourceNode,
 		Archive:       archive,
 	}
+	eventKey := deployEventKey(payload)
+	upsertDeployEvent(deployEvent{
+		Key:         eventKey,
+		At:          time.Now().Format(time.RFC3339),
+		Source:      sourceNode,
+		ProjectName: safeProjectName(req.ProjectName, req.ArchiveName),
+		ArchiveName: req.ArchiveName,
+		Status:      "sent",
+		Output:      "Renter sent deployment request and is waiting for provider status.",
+	})
 
 	stream, err := newStreamToAddr(node, addr, deployProtocol)
 	if err != nil {
@@ -118,14 +152,24 @@ func sendDeployBundle(node host.Host, req deployRequest) (deployResponse, error)
 	}
 	defer stream.Close()
 
+	stopPolling := make(chan struct{})
+	pollDone := make(chan struct{})
+	go pollRemoteDeployStatus(node, addr, eventKey, payload, stopPolling, pollDone)
+
 	if err := writeStreamJSON(stream, payload); err != nil {
+		close(stopPolling)
+		<-pollDone
 		return deployResponse{}, err
 	}
 	if err := stream.CloseWrite(); err != nil {
+		close(stopPolling)
+		<-pollDone
 		return deployResponse{}, err
 	}
 
 	responseBytes, err := io.ReadAll(io.LimitReader(stream, 32*1024*1024))
+	close(stopPolling)
+	<-pollDone
 	if err != nil {
 		return deployResponse{}, err
 	}
@@ -154,7 +198,8 @@ func recordDeployResult(response deployResponse, payload deployPayload, savedArt
 		status = "failed"
 	}
 
-	event := deployEvent{
+	upsertDeployEvent(deployEvent{
+		Key:         deployEventKey(payload),
 		At:          time.Now().Format(time.RFC3339),
 		Source:      payload.Source,
 		ProjectName: fallback(response.ProjectName, payload.ProjectName),
@@ -164,12 +209,7 @@ func recordDeployResult(response deployResponse, payload deployPayload, savedArt
 		Output:      response.Output,
 		Logs:        response.Logs,
 		Artifacts:   savedArtifacts,
-	}
-
-	state.mu.Lock()
-	state.deploys = append([]deployEvent{event}, state.deploys...)
-	state.deploys = firstDeploys(state.deploys, 20)
-	state.mu.Unlock()
+	})
 }
 
 func newStreamToAddr(node host.Host, addr string, proto protocol.ID) (network.Stream, error) {
@@ -183,6 +223,69 @@ func newStreamToAddr(node host.Host, addr string, proto protocol.ID) (network.St
 	}
 	node.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
 	return node.NewStream(context.Background(), info.ID, proto)
+}
+
+func fetchRemoteDeployStatus(node host.Host, addr string, key string) (*deployStatusResponse, error) {
+	stream, err := newStreamToAddr(node, addr, deployStatusProtocol)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+
+	if err := writeStreamJSON(stream, deployStatusRequest{Key: key}); err != nil {
+		return nil, err
+	}
+	if err := stream.CloseWrite(); err != nil {
+		return nil, err
+	}
+
+	bytes, err := io.ReadAll(io.LimitReader(stream, 256*1024))
+	if err != nil {
+		return nil, err
+	}
+
+	var response deployStatusResponse
+	if err := json.Unmarshal(bytes, &response); err != nil {
+		return nil, err
+	}
+	return &response, nil
+}
+
+func pollRemoteDeployStatus(node host.Host, addr string, eventKey string, payload deployPayload, stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+
+		response, err := fetchRemoteDeployStatus(node, addr, eventKey)
+		if err == nil && response != nil && response.Found {
+			event := response.Event
+			event.Key = eventKey
+			if event.Source == nil {
+				event.Source = payload.Source
+			}
+			if event.ArchiveName == "" {
+				event.ArchiveName = payload.Archive.Name
+			}
+			upsertDeployEvent(event)
+			if event.Status == "success" || event.Status == "failed" {
+				return
+			}
+		}
+
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func fetchPeerInfo(ctx context.Context, node host.Host, info peer.AddrInfo) (*peerInfoResponse, error) {

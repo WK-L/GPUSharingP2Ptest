@@ -83,6 +83,18 @@ func upsertDeployEvent(event deployEvent) {
 	state.deploys = firstDeploys(state.deploys, 20)
 }
 
+func getDeployEventByKey(key string) (deployEvent, bool) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	for _, event := range state.deploys {
+		if key != "" && event.Key == key {
+			return event, true
+		}
+	}
+	return deployEvent{}, false
+}
+
 func deployEventKey(payload deployPayload) string {
 	sourcePeerID := ""
 	if payload.Source != nil {
