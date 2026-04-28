@@ -51,7 +51,8 @@ func executeDeploy(payload deployPayload) deployResponse {
 	}
 
 	projectName := safeProjectName(payload.ProjectName, payload.Archive.Name)
-	composeFile, err := safeRelativePath(payload.ComposeFile, "docker-compose.yml")
+	defaultComposeFile := filepath.ToSlash(filepath.Join(defaultBundleRootName(payload.Archive.Name), "docker-compose.yml"))
+	composeFile, err := safeRelativePath(payload.ComposeFile, defaultComposeFile)
 	if err != nil {
 		return deployResponse{Message: err.Error()}
 	}
@@ -705,7 +706,7 @@ func safeRelativePath(path string, fallback string) (string, error) {
 func safeProjectName(value string, archiveName string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		value = strings.TrimSuffix(filepath.Base(archiveName), filepath.Ext(archiveName))
+		value = defaultBundleRootName(archiveName)
 	}
 	value = strings.ToLower(value)
 	value = fileNameCleaner.ReplaceAllString(value, "-")
@@ -715,6 +716,23 @@ func safeProjectName(value string, archiveName string) string {
 		return "deploy"
 	}
 	return value
+}
+
+func defaultBundleRootName(archiveName string) string {
+	name := filepath.Base(strings.TrimSpace(archiveName))
+	lower := strings.ToLower(name)
+	switch {
+	case strings.HasSuffix(lower, ".tar.gz"):
+		return name[:len(name)-len(".tar.gz")]
+	case strings.HasSuffix(lower, ".tgz"):
+		return name[:len(name)-len(".tgz")]
+	case strings.HasSuffix(lower, ".zip"):
+		return name[:len(name)-len(".zip")]
+	case strings.HasSuffix(lower, ".tar"):
+		return name[:len(name)-len(".tar")]
+	default:
+		return strings.TrimSuffix(name, filepath.Ext(name))
+	}
 }
 
 func trimOutput(output string) string {
