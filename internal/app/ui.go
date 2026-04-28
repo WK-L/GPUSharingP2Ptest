@@ -31,6 +31,7 @@ const appPage = `<!doctype html>
     .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .row > input[type="file"] { flex: 1 1 280px; }
     code { display: block; overflow-wrap: anywhere; white-space: pre-wrap; padding: 10px; border-radius: 8px; background: #eef2f7; line-height: 1.45; color: #172033; }
+    .terminal { min-height: 160px; max-height: 160px; overflow: auto; padding: 12px; border: 1px solid #233042; border-radius: 8px; background: #0f1720; color: #d6e2f0; font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; line-height: 1.5; }
     ul { list-style: none; margin: 0; padding: 0; }
     li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 0; border-top: 1px solid #e6ebf2; }
     li:first-child { border-top: 0; }
@@ -45,6 +46,7 @@ const appPage = `<!doctype html>
     .bundle-choice { display: flex; gap: 10px; align-items: flex-start; flex: 1 1 auto; }
     .bundle-choice input[type="radio"] { margin-top: 4px; }
     .bundle-copy { flex: 1 1 auto; }
+    .terminal-label { margin: 10px 0 6px; color: #5c6676; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
     @media (max-width: 760px) {
       main { width: min(100vw - 24px, 1120px); padding: 20px 0; }
       .grid { grid-template-columns: 1fr; }
@@ -253,18 +255,26 @@ const appPage = `<!doctype html>
           const title = document.createElement('strong')
           const meta = document.createElement('div')
           const command = document.createElement('code')
+          const dockerLog = document.createElement('div')
           const output = document.createElement('code')
+          const userLog = document.createElement('div')
           const logs = document.createElement('code')
           const artifactList = document.createElement('div')
+          dockerLog.className = 'terminal-label'
+          userLog.className = 'terminal-label'
+          output.className = 'terminal'
+          logs.className = 'terminal'
           title.textContent = event.projectName + ' - ' + event.status
           meta.className = 'meta'
           meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
           command.textContent = event.command || 'No command recorded.'
-          output.textContent = event.output || 'No command output.'
-          logs.textContent = event.logs || 'No compose logs.'
+          dockerLog.textContent = 'docker log'
+          userLog.textContent = 'user log'
+          output.textContent = event.output || 'No docker compose up log.'
+          logs.textContent = event.logs || 'No user log.'
           artifactList.className = 'meta'
           artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
-          wrap.append(title, meta, command, output, logs, artifactList) // 印出docker command
+          wrap.append(title, meta, dockerLog, output, userLog, logs, artifactList) // 印出docker command
           // wrap.append(title, meta, output, logs, artifactList)
           item.append(wrap)
           deployments.append(item)
