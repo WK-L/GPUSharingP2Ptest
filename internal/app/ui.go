@@ -47,6 +47,8 @@ const appPage = `<!doctype html>
     .bundle-choice input[type="radio"] { margin-top: 4px; }
     .bundle-copy { flex: 1 1 auto; }
     .terminal-label { margin: 10px 0 6px; color: #5c6676; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+    .section-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .section-head h2 { margin-bottom: 0; }
     @media (max-width: 760px) {
       main { width: min(100vw - 24px, 1120px); padding: 20px 0; }
       .grid { grid-template-columns: 1fr; }
@@ -106,7 +108,10 @@ const appPage = `<!doctype html>
       </section>
 
       <section class="panel wide">
-        <h2>Deployment Activity</h2>
+        <div class="section-head">
+          <h2>Deployment Activity</h2>
+          <button id="toggleLogUpdates">Pause Log Updates</button>
+        </div>
         <ul id="deployments"></ul>
       </section>
 
@@ -133,8 +138,10 @@ const appPage = `<!doctype html>
     const displayName = document.querySelector('#displayName')
     const manualAddr = document.querySelector('#manualAddr')
     const artifactPaths = document.querySelector('#artifactPaths')
+    const toggleLogUpdates = document.querySelector('#toggleLogUpdates')
     let bestCircuitAddr = ''
     let selectedBundle = ''
+    let logsPaused = false
 
     const fileToBase64 = (file) => new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -153,6 +160,20 @@ const appPage = `<!doctype html>
     }
 
     const asArray = (value) => Array.isArray(value) ? value : []
+
+    const formatDeploymentLog = (event) => {
+      const parts = []
+      const output = String(event?.output || '').trim()
+      const logs = String(event?.logs || '').trim()
+      if (output !== '') parts.push(output)
+      if (logs !== '') parts.push(logs)
+      if (parts.length === 0) return 'No log output.'
+      return parts.join('\n\n')
+    }
+
+    const refreshLogToggleLabel = () => {
+      toggleLogUpdates.textContent = logsPaused ? 'Resume Log Updates' : 'Pause Log Updates'
+    }
 
     const normalizeNetwork = (network) => ({
       relayService: Boolean(network?.relayService),
@@ -244,40 +265,35 @@ const appPage = `<!doctype html>
         }
       }
 
-      deployments.innerHTML = ''
-      if (deploymentsList.length === 0) {
-        renderListMessage(deployments, 'No deployments yet.')
-      } else {
-        for (const event of deploymentsList) {
-          const eventArtifacts = asArray(event?.artifacts)
-          const item = document.createElement('li')
-          const wrap = document.createElement('div')
-          const title = document.createElement('strong')
-          const meta = document.createElement('div')
-          const command = document.createElement('code')
-          const dockerLog = document.createElement('div')
-          const output = document.createElement('code')
-          const userLog = document.createElement('div')
-          const logs = document.createElement('code')
-          const artifactList = document.createElement('div')
-          dockerLog.className = 'terminal-label'
-          userLog.className = 'terminal-label'
-          output.className = 'terminal'
-          logs.className = 'terminal'
-          title.textContent = event.projectName + ' - ' + event.status
-          meta.className = 'meta'
-          meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
-          command.textContent = event.command || 'No command recorded.'
-          dockerLog.textContent = 'docker log'
-          userLog.textContent = 'user log'
-          output.textContent = event.output || 'No docker compose up log.'
-          logs.textContent = event.logs || 'No user log.'
-          artifactList.className = 'meta'
-          artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
-          wrap.append(title, meta, dockerLog, output, userLog, logs, artifactList) // 印出docker command
-          // wrap.append(title, meta, output, logs, artifactList)
-          item.append(wrap)
-          deployments.append(item)
+      refreshLogToggleLabel()
+      if (!logsPaused) {
+        deployments.innerHTML = ''
+        if (deploymentsList.length === 0) {
+          renderListMessage(deployments, 'No deployments yet.')
+        } else {
+          for (const event of deploymentsList) {
+            const eventArtifacts = asArray(event?.artifacts)
+            const item = document.createElement('li')
+            const wrap = document.createElement('div')
+            const title = document.createElement('strong')
+            const meta = document.createElement('div')
+            const logLabel = document.createElement('div')
+            const logBox = document.createElement('code')
+            const artifactList = document.createElement('div')
+            logLabel.className = 'terminal-label'
+            logBox.className = 'terminal'
+            title.textContent = event.projectName + ' - ' + event.status
+            meta.className = 'meta'
+            meta.textContent = [event.archiveName, event.source?.name || event.source?.peerId || 'unknown source node', new Date(event.at).toLocaleString()].join(' | ')
+            logLabel.textContent = 'log'
+            logBox.textContent = formatDeploymentLog(event)
+            artifactList.className = 'meta'
+            artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
+            wrap.append(title, meta, logLabel, logBox, artifactList)
+            item.append(wrap)
+            deployments.append(item)
+            logBox.scrollTop = logBox.scrollHeight
+          }
         }
       }
 
@@ -399,6 +415,16 @@ const appPage = `<!doctype html>
       status.textContent = 'Circuit address copied.'
     }
 
+    toggleLogUpdates.onclick = async () => {
+      logsPaused = !logsPaused
+      refreshLogToggleLabel()
+      status.textContent = logsPaused ? 'Log updates paused.' : 'Log updates resumed.'
+      if (!logsPaused) {
+        await loadState()
+      }
+    }
+
+    refreshLogToggleLabel()
     loadState().catch((err) => { status.textContent = err.message })
     setInterval(loadState, 5000)
   </script>
