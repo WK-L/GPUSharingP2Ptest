@@ -264,8 +264,8 @@ const appPage = `<!doctype html>
           logs.textContent = event.logs || 'No compose logs.'
           artifactList.className = 'meta'
           artifactList.textContent = eventArtifacts.length ? 'Artifacts: ' + eventArtifacts.join(', ') : 'Artifacts: none'
-          // wrap.append(title, meta, command, output, logs, artifactList) // 印出docker command
-          wrap.append(title, meta, output, logs, artifactList)
+          wrap.append(title, meta, command, output, logs, artifactList) // 印出docker command
+          // wrap.append(title, meta, output, logs, artifactList)
           item.append(wrap)
           deployments.append(item)
         }
